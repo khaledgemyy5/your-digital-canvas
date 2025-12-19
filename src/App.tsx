@@ -13,6 +13,8 @@ import NotFound from "@/pages/NotFound";
 
 // Admin pages
 import Login from "@/pages/admin/Login";
+import ForgotPassword from "@/pages/admin/ForgotPassword";
+import ResetPassword from "@/pages/admin/ResetPassword";
 import Dashboard from "@/pages/admin/Dashboard";
 import Sections from "@/pages/admin/Sections";
 import SectionEditor from "@/pages/admin/SectionEditor";
@@ -55,6 +57,8 @@ const App = () => (
 
               {/* Admin routes */}
               <Route path="/admin/login" element={<Login />} />
+              <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+              <Route path="/admin/reset-password" element={<ResetPassword />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="sections" element={<Sections />} />
