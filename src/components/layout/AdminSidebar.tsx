@@ -23,7 +23,7 @@ const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Sections', href: '/admin/sections', icon: FileText },
   { name: 'Projects', href: '/admin/projects', icon: FolderOpen },
-  { name: 'Preview', href: '/', icon: Eye, external: true },
+  { name: 'Preview', href: '/preview', icon: Eye, external: true },
   { name: 'Appearance', href: '/admin/appearance', icon: Palette },
   { name: 'Settings', href: '/admin/settings', icon: Settings },
 ];

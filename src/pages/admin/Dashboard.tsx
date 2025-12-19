@@ -76,7 +76,11 @@ const Dashboard = () => {
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-3">
-        <Button variant="outline" className="gap-2">
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={() => window.open('/preview', '_blank')}
+        >
           <FileText className="h-4 w-4" />
           Preview Draft
         </Button>
