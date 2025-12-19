@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { FileText, Globe, Clock, Calendar, Upload, RotateCcw, CheckCircle, AlertTriangle } from "lucide-react";
+import { FileText, Globe, Clock, Calendar, Upload, RotateCcw, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePublishing, DraftItem } from "@/hooks/usePublishing";
 import { PublishConfirmDialog } from "@/components/PublishConfirmDialog";
 import { toast } from "sonner";
@@ -20,7 +21,7 @@ const formatDate = (dateString: string) => {
 const Dashboard = () => {
   const { 
     isPublishing, 
-    getUnpublishedItems, 
+    refreshUnpublishedItems,
     publishAll, 
     publishItem,
     discardAll,
@@ -28,6 +29,7 @@ const Dashboard = () => {
   } = usePublishing();
   
   const [unpublishedItems, setUnpublishedItems] = useState<DraftItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [showPublishItemDialog, setShowPublishItemDialog] = useState(false);
@@ -35,14 +37,21 @@ const Dashboard = () => {
   const [selectedItem, setSelectedItem] = useState<DraftItem | null>(null);
   const [lastPublished, setLastPublished] = useState<string | null>(null);
 
-  // Refresh unpublished items
-  const refreshItems = () => {
-    const items = getUnpublishedItems();
-    setUnpublishedItems(items);
+  // Fetch unpublished items from API on mount
+  const loadItems = async () => {
+    setIsLoading(true);
+    try {
+      const items = await refreshUnpublishedItems();
+      setUnpublishedItems(items);
+    } catch (error) {
+      console.error('Failed to load unpublished items:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    refreshItems();
+    loadItems();
     // Check localStorage for last published time
     const lastPub = localStorage.getItem('last_published_at');
     if (lastPub) setLastPublished(lastPub);
@@ -59,17 +68,21 @@ const Dashboard = () => {
       toast.success('All changes published successfully!', {
         icon: <CheckCircle className="h-4 w-4 text-emerald-500" />,
       });
-      refreshItems();
+      // Refresh items after publish
+      const items = await refreshUnpublishedItems();
+      setUnpublishedItems(items);
     } else {
       toast.error(result.error || 'Failed to publish changes');
     }
   };
 
-  const handleDiscardAll = () => {
+  const handleDiscardAll = async () => {
     discardAll();
     setShowDiscardDialog(false);
     toast.success('All changes discarded');
-    refreshItems();
+    // Refresh items after discard
+    const items = await refreshUnpublishedItems();
+    setUnpublishedItems(items);
   };
 
   const handlePublishItem = async () => {
@@ -83,20 +96,24 @@ const Dashboard = () => {
       localStorage.setItem('last_published_at', now);
       setLastPublished(now);
       toast.success(`${selectedItem.name} published successfully!`);
-      refreshItems();
+      // Refresh items after publish
+      const items = await refreshUnpublishedItems();
+      setUnpublishedItems(items);
     } else {
       toast.error(result.error || 'Failed to publish');
     }
     setSelectedItem(null);
   };
 
-  const handleDiscardItem = () => {
+  const handleDiscardItem = async () => {
     if (!selectedItem) return;
     
     discardChanges(selectedItem.type, selectedItem.id);
     setShowDiscardItemDialog(false);
     toast.success(`Changes to ${selectedItem.name} discarded`);
-    refreshItems();
+    // Refresh items after discard
+    const items = await refreshUnpublishedItems();
+    setUnpublishedItems(items);
     setSelectedItem(null);
   };
 
@@ -119,6 +136,43 @@ const Dashboard = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-8">
+        {/* Stats Grid Skeleton */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-md" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-12" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        
+        {/* Action Buttons Skeleton */}
+        <div className="flex gap-3">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+        
+        {/* Content Skeleton */}
+        <Card>
+          <CardContent className="p-8 flex items-center justify-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Loading dashboard...</span>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       {/* Stats Grid */}
@@ -126,8 +180,14 @@ const Dashboard = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-500/10">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <div className={`flex h-10 w-10 items-center justify-center rounded-md ${
+                unpublishedItems.length > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10'
+              }`}>
+                {unpublishedItems.length > 0 ? (
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                ) : (
+                  <CheckCircle className="h-5 w-5 text-emerald-500" />
+                )}
               </div>
               <div>
                 <p className="text-2xl font-semibold">{unpublishedItems.length}</p>
