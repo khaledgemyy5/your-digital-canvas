@@ -32,6 +32,334 @@ export type Database = {
         }
         Relationships: []
       }
+      project_pages: {
+        Row: {
+          content_draft: Json | null
+          content_published: Json | null
+          created_at: string
+          id: string
+          is_published: boolean
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          content_draft?: Json | null
+          content_published?: Json | null
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          content_draft?: Json | null
+          content_published?: Json | null
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_pages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          description_draft: string | null
+          description_published: string | null
+          display_order: number
+          external_url: string | null
+          github_url: string | null
+          id: string
+          is_featured: boolean
+          is_published: boolean
+          is_visible: boolean
+          slug: string
+          technologies: Json | null
+          thumbnail_url: string | null
+          title_draft: string
+          title_published: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          description_draft?: string | null
+          description_published?: string | null
+          display_order?: number
+          external_url?: string | null
+          github_url?: string | null
+          id?: string
+          is_featured?: boolean
+          is_published?: boolean
+          is_visible?: boolean
+          slug: string
+          technologies?: Json | null
+          thumbnail_url?: string | null
+          title_draft: string
+          title_published?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          description_draft?: string | null
+          description_published?: string | null
+          display_order?: number
+          external_url?: string | null
+          github_url?: string | null
+          id?: string
+          is_featured?: boolean
+          is_published?: boolean
+          is_visible?: boolean
+          slug?: string
+          technologies?: Json | null
+          thumbnail_url?: string | null
+          title_draft?: string
+          title_published?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      resume_assets: {
+        Row: {
+          created_at: string
+          external_url_draft: string | null
+          external_url_published: string | null
+          file_url_draft: string | null
+          file_url_published: string | null
+          filename: string | null
+          id: string
+          is_active: boolean
+          is_published: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          external_url_draft?: string | null
+          external_url_published?: string | null
+          file_url_draft?: string | null
+          file_url_published?: string | null
+          filename?: string | null
+          id?: string
+          is_active?: boolean
+          is_published?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          external_url_draft?: string | null
+          external_url_published?: string | null
+          file_url_draft?: string | null
+          file_url_published?: string | null
+          filename?: string | null
+          id?: string
+          is_active?: boolean
+          is_published?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      section_bullets: {
+        Row: {
+          content_draft: string | null
+          content_published: string | null
+          created_at: string
+          deleted_at: string | null
+          display_order: number
+          id: string
+          is_published: boolean
+          section_id: string
+          updated_at: string
+        }
+        Insert: {
+          content_draft?: string | null
+          content_published?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number
+          id?: string
+          is_published?: boolean
+          section_id: string
+          updated_at?: string
+        }
+        Update: {
+          content_draft?: string | null
+          content_published?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number
+          id?: string
+          is_published?: boolean
+          section_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_bullets_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sections: {
+        Row: {
+          content_draft: Json | null
+          content_published: Json | null
+          created_at: string
+          deleted_at: string | null
+          display_order: number
+          id: string
+          is_published: boolean
+          is_visible: boolean
+          slug: string
+          subtitle: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content_draft?: Json | null
+          content_published?: Json | null
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number
+          id?: string
+          is_published?: boolean
+          is_visible?: boolean
+          slug: string
+          subtitle?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content_draft?: Json | null
+          content_published?: Json | null
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number
+          id?: string
+          is_published?: boolean
+          is_visible?: boolean
+          slug?: string
+          subtitle?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      site_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_published: boolean
+          key: string
+          updated_at: string
+          value_draft: Json | null
+          value_published: Json | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          key: string
+          updated_at?: string
+          value_draft?: Json | null
+          value_published?: Json | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          key?: string
+          updated_at?: string
+          value_draft?: Json | null
+          value_published?: Json | null
+        }
+        Relationships: []
+      }
+      social_links: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          display_order: number
+          icon: string | null
+          id: string
+          is_published: boolean
+          is_visible: boolean
+          platform: string
+          updated_at: string
+          url_draft: string | null
+          url_published: string | null
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number
+          icon?: string | null
+          id?: string
+          is_published?: boolean
+          is_visible?: boolean
+          platform: string
+          updated_at?: string
+          url_draft?: string | null
+          url_published?: string | null
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number
+          icon?: string | null
+          id?: string
+          is_published?: boolean
+          is_visible?: boolean
+          platform?: string
+          updated_at?: string
+          url_draft?: string | null
+          url_published?: string | null
+        }
+        Relationships: []
+      }
+      theme_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_published: boolean
+          key: string
+          updated_at: string
+          value_draft: Json | null
+          value_published: Json | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          key: string
+          updated_at?: string
+          value_draft?: Json | null
+          value_published?: Json | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          key?: string
+          updated_at?: string
+          value_draft?: Json | null
+          value_published?: Json | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
