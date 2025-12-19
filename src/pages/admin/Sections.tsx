@@ -1,69 +1,125 @@
-import React from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { GripVertical, Edit, Eye, EyeOff } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { GripVertical, Edit } from 'lucide-react';
 
-// Mock data - will be replaced with API calls
-const sections = [
+interface Section {
+  id: string;
+  name: string;
+  status: 'draft' | 'published';
+  visible: boolean;
+  order: number;
+}
+
+// Predefined sections matching user requirements
+const initialSections: Section[] = [
   { id: '1', name: 'Summary', status: 'published', visible: true, order: 1 },
   { id: '2', name: 'Skills', status: 'draft', visible: true, order: 2 },
-  { id: '3', name: 'Experience', status: 'published', visible: true, order: 3 },
+  { id: '3', name: 'Experience Overview', status: 'published', visible: true, order: 3 },
   { id: '4', name: 'How I Work', status: 'published', visible: true, order: 4 },
-  { id: '5', name: 'Projects', status: 'draft', visible: false, order: 5 },
+  { id: '5', name: 'Some Projects', status: 'draft', visible: true, order: 5 },
   { id: '6', name: 'Contact', status: 'published', visible: true, order: 6 },
 ];
 
-const Sections: React.FC = () => {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Sections</h1>
-          <p className="text-muted-foreground">
-            Manage and reorder your portfolio sections.
-          </p>
-        </div>
-      </div>
+const Sections = () => {
+  const [sections, setSections] = useState<Section[]>(initialSections);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
 
+  const toggleVisibility = (id: string) => {
+    setSections((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, visible: !s.visible } : s))
+    );
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedId || draggedId === targetId) return;
+
+    const draggedIndex = sections.findIndex((s) => s.id === draggedId);
+    const targetIndex = sections.findIndex((s) => s.id === targetId);
+
+    const newSections = [...sections];
+    const [removed] = newSections.splice(draggedIndex, 1);
+    newSections.splice(targetIndex, 0, removed);
+
+    // Update order values
+    const reordered = newSections.map((s, idx) => ({ ...s, order: idx + 1 }));
+    setSections(reordered);
+    setDraggedId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+  };
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>All Sections</CardTitle>
+          <CardTitle className="text-base font-medium">Manage Sections</CardTitle>
           <CardDescription>
-            Drag to reorder. Click edit to modify content.
+            Drag to reorder. Order affects public site layout. Hidden sections won't appear in navigation.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
+        <CardContent className="p-0">
+          <div className="divide-y divide-border">
             {sections.map((section) => (
               <div
                 key={section.id}
-                className="flex items-center gap-4 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50"
+                draggable
+                onDragStart={(e) => handleDragStart(e, section.id)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, section.id)}
+                onDragEnd={handleDragEnd}
+                className={`flex items-center gap-4 px-4 py-3 transition-colors ${
+                  draggedId === section.id
+                    ? 'bg-muted/70 opacity-50'
+                    : 'hover:bg-muted/30'
+                } ${!section.visible ? 'opacity-60' : ''}`}
               >
-                <button className="cursor-grab text-muted-foreground hover:text-foreground">
-                  <GripVertical className="h-5 w-5" />
+                <button
+                  className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                  onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
+                  onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
+                >
+                  <GripVertical className="h-4 w-4" />
                 </button>
 
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{section.name}</span>
-                    <Badge variant={section.status === 'published' ? 'default' : 'secondary'}>
-                      {section.status}
-                    </Badge>
-                  </div>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-sm">{section.name}</span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={section.visible ? 'text-primary' : 'text-muted-foreground'}
-                  >
-                    {section.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Edit className="mr-2 h-4 w-4" />
-                    Edit
+                <Badge
+                  variant={section.status === 'published' ? 'default' : 'secondary'}
+                  className="text-xs"
+                >
+                  {section.status === 'published' ? 'Published' : 'Draft'}
+                </Badge>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {section.visible ? 'Visible' : 'Hidden'}
+                    </span>
+                    <Switch
+                      checked={section.visible}
+                      onCheckedChange={() => toggleVisibility(section.id)}
+                    />
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                    <Edit className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -71,6 +127,10 @@ const Sections: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <p className="text-xs text-muted-foreground text-center">
+        Changes are saved automatically as drafts
+      </p>
     </div>
   );
 };
