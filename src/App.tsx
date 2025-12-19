@@ -15,6 +15,7 @@ import NotFound from "@/pages/NotFound";
 import Login from "@/pages/admin/Login";
 import Dashboard from "@/pages/admin/Dashboard";
 import Sections from "@/pages/admin/Sections";
+import SectionEditor from "@/pages/admin/SectionEditor";
 import Projects from "@/pages/admin/Projects";
 import Settings from "@/pages/admin/Settings";
 import Appearance from "@/pages/admin/Appearance";
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="sections" element={<Sections />} />
+                <Route path="sections/:id" element={<SectionEditor />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="appearance" element={<Appearance />} />
                 <Route path="settings" element={<Settings />} />
