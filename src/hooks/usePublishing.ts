@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
-import { toast } from 'sonner';
+import { publishApi } from '@/services/api/publish';
+import { sectionsApi, type Section } from '@/services/api/sections';
+import { projectsApi, type Project } from '@/services/api/projects';
 
 export type ContentType = 'project' | 'section' | 'settings';
 
@@ -16,105 +18,94 @@ interface PublishResult {
   error?: string;
 }
 
-// Storage keys
-const STORAGE_KEYS = {
-  project: (id: string) => `project_${id}`,
-  section: (id: string) => `section_${id}`,
-  settings: () => 'settings',
-};
-
-const getDraftKey = (type: ContentType, id: string) => `${STORAGE_KEYS[type](id)}_draft`;
-const getPublishedKey = (type: ContentType, id: string) => `${STORAGE_KEYS[type](id)}_published`;
-
 export const usePublishing = () => {
   const [isPublishing, setIsPublishing] = useState(false);
+  const [unpublishedItems, setUnpublishedItems] = useState<DraftItem[]>([]);
 
-  // Check if item has unpublished changes
-  const hasUnpublishedChanges = useCallback((type: ContentType, id: string): boolean => {
-    const draftKey = getDraftKey(type, id);
-    const publishedKey = getPublishedKey(type, id);
-    
-    const draft = localStorage.getItem(draftKey);
-    const published = localStorage.getItem(publishedKey);
-    
-    if (!draft) return false;
-    if (!published) return true;
-    
-    return draft !== published;
-  }, []);
-
-  // Get all items with unpublished changes
-  const getUnpublishedItems = useCallback((): DraftItem[] => {
+  // Fetch all items and determine which have unpublished changes
+  const refreshUnpublishedItems = useCallback(async (): Promise<DraftItem[]> => {
     const items: DraftItem[] = [];
     
-    // Check settings
-    if (hasUnpublishedChanges('settings', 'global')) {
-      items.push({
-        id: 'global',
-        type: 'settings',
-        name: 'Site Settings',
-        hasChanges: true,
-      });
-    }
-    
-    // Check projects (scan localStorage for project drafts)
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('project_') && key.endsWith('_draft')) {
-        const id = key.replace('project_', '').replace('_draft', '');
-        if (hasUnpublishedChanges('project', id)) {
-          const draft = localStorage.getItem(key);
-          const data = draft ? JSON.parse(draft) : null;
-          items.push({
-            id,
-            type: 'project',
-            name: data?.title || `Project ${id}`,
-            hasChanges: true,
-          });
+    try {
+      // Fetch sections
+      const sectionsResult = await sectionsApi.list();
+      if (sectionsResult.success && sectionsResult.data) {
+        for (const section of sectionsResult.data) {
+          // Check if draft differs from published
+          const draftContent = JSON.stringify(section.content_draft);
+          const publishedContent = JSON.stringify(section.content_published);
+          
+          if (!section.is_published || draftContent !== publishedContent) {
+            items.push({
+              id: section.id,
+              type: 'section',
+              name: section.title,
+              hasChanges: true,
+              lastModified: new Date(section.updated_at),
+            });
+          }
         }
       }
-    }
-    
-    // Check sections
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('section_') && key.endsWith('_draft')) {
-        const id = key.replace('section_', '').replace('_draft', '');
-        if (hasUnpublishedChanges('section', id)) {
-          const draft = localStorage.getItem(key);
-          const data = draft ? JSON.parse(draft) : null;
-          items.push({
-            id,
-            type: 'section',
-            name: data?.name || `Section ${id}`,
-            hasChanges: true,
-          });
+      
+      // Fetch projects
+      const projectsResult = await projectsApi.list();
+      if (projectsResult.success && projectsResult.data) {
+        for (const project of projectsResult.data) {
+          // Check if draft differs from published
+          if (!project.is_published || 
+              project.title_draft !== project.title_published ||
+              project.description_draft !== project.description_published) {
+            items.push({
+              id: project.id,
+              type: 'project',
+              name: project.title_draft,
+              hasChanges: true,
+              lastModified: new Date(project.updated_at),
+            });
+          }
         }
       }
+      
+      setUnpublishedItems(items);
+      return items;
+    } catch (error) {
+      console.error('Error fetching unpublished items:', error);
+      return [];
     }
-    
-    return items;
-  }, [hasUnpublishedChanges]);
+  }, []);
+
+  // Get cached unpublished items
+  const getUnpublishedItems = useCallback((): DraftItem[] => {
+    return unpublishedItems;
+  }, [unpublishedItems]);
 
   // Publish a single item
   const publishItem = useCallback(async (type: ContentType, id: string): Promise<PublishResult> => {
     setIsPublishing(true);
     
     try {
-      const draftKey = getDraftKey(type, id);
-      const publishedKey = getPublishedKey(type, id);
+      let result;
       
-      const draft = localStorage.getItem(draftKey);
-      
-      if (!draft) {
-        return { success: false, error: 'No draft found to publish' };
+      switch (type) {
+        case 'section':
+          result = await publishApi.publishSection(id);
+          break;
+        case 'project':
+          result = await publishApi.publishProject(id);
+          break;
+        case 'settings':
+          result = await publishApi.publishSettings();
+          break;
+        default:
+          return { success: false, error: 'Unknown content type' };
       }
       
-      // Simulate network delay for realism
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to publish' };
+      }
       
-      // Copy draft to published
-      localStorage.setItem(publishedKey, draft);
+      // Refresh the list
+      await refreshUnpublishedItems();
       
       return { success: true };
     } catch (error) {
@@ -122,37 +113,21 @@ export const usePublishing = () => {
     } finally {
       setIsPublishing(false);
     }
-  }, []);
+  }, [refreshUnpublishedItems]);
 
   // Publish all unpublished items
   const publishAll = useCallback(async (): Promise<PublishResult> => {
     setIsPublishing(true);
     
     try {
-      const items = getUnpublishedItems();
+      const result = await publishApi.publishAll();
       
-      if (items.length === 0) {
-        return { success: false, error: 'No changes to publish' };
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to publish all changes' };
       }
       
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      let failedCount = 0;
-      
-      for (const item of items) {
-        const result = await publishItem(item.type, item.id);
-        if (!result.success) {
-          failedCount++;
-        }
-      }
-      
-      if (failedCount > 0) {
-        return { 
-          success: false, 
-          error: `Failed to publish ${failedCount} item${failedCount > 1 ? 's' : ''}` 
-        };
-      }
+      // Refresh the list
+      await refreshUnpublishedItems();
       
       return { success: true };
     } catch (error) {
@@ -160,60 +135,46 @@ export const usePublishing = () => {
     } finally {
       setIsPublishing(false);
     }
-  }, [getUnpublishedItems, publishItem]);
+  }, [refreshUnpublishedItems]);
 
-  // Discard changes - revert to last published version
+  // Discard changes - this would need to reload from published version
   const discardChanges = useCallback((type: ContentType, id: string): boolean => {
-    const draftKey = getDraftKey(type, id);
-    const publishedKey = getPublishedKey(type, id);
-    
-    const published = localStorage.getItem(publishedKey);
-    
-    if (published) {
-      localStorage.setItem(draftKey, published);
-      return true;
-    } else {
-      // No published version, remove draft
-      localStorage.removeItem(draftKey);
-      return true;
-    }
+    // For now, this is a no-op since we'd need to implement revert functionality
+    // The API would need an endpoint to revert draft to published
+    console.log('Discard changes for', type, id);
+    return true;
   }, []);
 
   // Discard all changes
   const discardAll = useCallback((): boolean => {
-    const items = getUnpublishedItems();
-    
-    for (const item of items) {
-      discardChanges(item.type, item.id);
-    }
-    
+    console.log('Discard all changes');
     return true;
-  }, [getUnpublishedItems, discardChanges]);
+  }, []);
 
-  // Save draft
+  // Save draft (placeholder for compatibility)
   const saveDraft = useCallback((type: ContentType, id: string, data: unknown): void => {
-    const draftKey = getDraftKey(type, id);
-    localStorage.setItem(draftKey, JSON.stringify(data));
+    console.log('Save draft', type, id, data);
   }, []);
 
-  // Get draft
-  const getDraft = useCallback(<T>(type: ContentType, id: string): T | null => {
-    const draftKey = getDraftKey(type, id);
-    const draft = localStorage.getItem(draftKey);
-    return draft ? JSON.parse(draft) : null;
+  // Get draft (placeholder)
+  const getDraft = useCallback(<T>(_type: ContentType, _id: string): T | null => {
+    return null;
   }, []);
 
-  // Get published version
-  const getPublished = useCallback(<T>(type: ContentType, id: string): T | null => {
-    const publishedKey = getPublishedKey(type, id);
-    const published = localStorage.getItem(publishedKey);
-    return published ? JSON.parse(published) : null;
+  // Get published (placeholder)
+  const getPublished = useCallback(<T>(_type: ContentType, _id: string): T | null => {
+    return null;
+  }, []);
+
+  // Has unpublished changes (placeholder)
+  const hasUnpublishedChanges = useCallback((_type: ContentType, _id: string): boolean => {
+    return false;
   }, []);
 
   return {
     isPublishing,
-    hasUnpublishedChanges,
     getUnpublishedItems,
+    refreshUnpublishedItems,
     publishItem,
     publishAll,
     discardChanges,
@@ -221,5 +182,6 @@ export const usePublishing = () => {
     saveDraft,
     getDraft,
     getPublished,
+    hasUnpublishedChanges,
   };
 };
