@@ -27,9 +27,10 @@ function getStoredTheme(): ThemeMode {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(() => getStoredTheme());
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() =>
-    theme === 'system' ? getSystemTheme() : theme
-  );
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() => {
+    const storedTheme = getStoredTheme();
+    return storedTheme === 'system' ? getSystemTheme() : storedTheme;
+  });
 
   // Update resolved theme when theme changes
   useEffect(() => {
