@@ -211,6 +211,52 @@ export const authApi = {
   },
 
   /**
+   * Send password reset email
+   */
+  resetPassword: async (email: string, redirectUrl: string): Promise<ApiResponse<void>> => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl,
+      });
+
+      if (error) {
+        return { success: false, data: null, error: error.message };
+      }
+
+      return { success: true, data: undefined, error: null };
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to send reset email',
+      };
+    }
+  },
+
+  /**
+   * Update password (after clicking reset link)
+   */
+  updatePassword: async (newPassword: string): Promise<ApiResponse<void>> => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        return { success: false, data: null, error: error.message };
+      }
+
+      return { success: true, data: undefined, error: null };
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to update password',
+      };
+    }
+  },
+
+  /**
    * Get current user (mock for development)
    */
   getCurrentUser: async (): Promise<ApiResponse<AdminUser>> => {

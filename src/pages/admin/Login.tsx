@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -255,6 +255,17 @@ const Login: React.FC = () => {
                     </button>
                   </div>
                 </div>
+
+                {!isSignUp && (
+                  <div className="text-right">
+                    <Link
+                      to="/admin/forgot-password"
+                      className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                )}
 
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
