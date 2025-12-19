@@ -178,10 +178,11 @@ const ProjectEditor = () => {
   };
 
   const handlePreview = () => {
-    // Open preview in new tab (would link to actual project page)
-    toast({
-      description: 'Preview opened in new tab',
-    });
+    window.open(`/preview/project/${id}`, '_blank');
+  };
+
+  const handlePreviewSite = () => {
+    window.open('/preview', '_blank');
   };
 
   return (

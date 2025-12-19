@@ -21,6 +21,10 @@ import ProjectEditor from "@/pages/admin/ProjectEditor";
 import Settings from "@/pages/admin/Settings";
 import Appearance from "@/pages/admin/Appearance";
 
+// Preview pages
+import PreviewSite from "@/pages/preview/PreviewSite";
+import PreviewProject from "@/pages/preview/PreviewProject";
+
 // Layouts
 import AdminLayout from "@/components/layout/AdminLayout";
 
@@ -44,6 +48,10 @@ const App = () => (
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<Index />} />
+
+              {/* Preview routes */}
+              <Route path="/preview" element={<PreviewSite />} />
+              <Route path="/preview/project/:id" element={<PreviewProject />} />
 
               {/* Admin routes */}
               <Route path="/admin/login" element={<Login />} />
