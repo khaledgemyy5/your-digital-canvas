@@ -1,6 +1,13 @@
+/**
+ * Auth Context - Provider Agnostic
+ * 
+ * This context uses the auth API service for all authentication operations.
+ * No direct SDK/database calls - all communication goes through the API layer.
+ */
+
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { authApi } from '@/services/api/auth';
+import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
@@ -85,24 +92,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<Date | null>(null);
 
-  // Check if user is admin
+  // Check if user is admin via API
   const checkAdminStatus = useCallback(async (email: string): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase.rpc('is_admin_email', { check_email: email });
-      if (error) {
-        console.error('Error checking admin status:', error);
-        return false;
-      }
-      return data === true;
-    } catch {
-      return false;
-    }
+    const result = await authApi.checkAdminEmail(email);
+    return result.success && result.data === true;
   }, []);
 
-  // Set up auth state listener
+  // Set up auth state listener via API
   useEffect(() => {
     // Set up listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+    const unsubscribe = authApi.onAuthStateChange((event, currentSession) => {
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       
@@ -127,26 +126,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      setSession(existingSession);
-      setUser(existingSession?.user ?? null);
-      
-      if (existingSession?.expires_at) {
-        setSessionExpiresAt(new Date(existingSession.expires_at * 1000));
-      }
-      
-      if (existingSession?.user?.email) {
-        checkAdminStatus(existingSession.user.email).then(setIsAdmin);
+    // THEN check for existing session via API
+    authApi.getSession().then((result) => {
+      if (result.success && result.data) {
+        setSession(result.data.session);
+        setUser(result.data.user);
+        
+        if (result.data.expiresAt) {
+          setSessionExpiresAt(result.data.expiresAt);
+        }
+        
+        if (result.data.user?.email) {
+          checkAdminStatus(result.data.user.email).then(setIsAdmin);
+        }
       }
       
       setIsLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return unsubscribe;
   }, [checkAdminStatus]);
 
-  // Session expiry warning
+  // Session expiry handling via API
   useEffect(() => {
     if (!sessionExpiresAt) return;
     
@@ -154,9 +155,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const now = new Date();
       const timeUntilExpiry = sessionExpiresAt.getTime() - now.getTime();
       
-      // If session expired, sign out
+      // If session expired, sign out via API
       if (timeUntilExpiry <= 0) {
-        supabase.auth.signOut();
+        authApi.logout();
       }
     };
     
@@ -179,7 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Record attempt before checking admin status
       recordAttempt();
 
-      // Check if email is in allowed admin list
+      // Check if email is in allowed admin list via API
       const isAllowed = await checkAdminStatus(email);
       if (!isAllowed) {
         return { 
@@ -190,18 +191,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const redirectUrl = `${window.location.origin}/admin`;
       
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: redirectUrl,
-        },
-      });
+      // Send magic link via API
+      const result = await authApi.sendMagicLink(email, redirectUrl);
 
-      if (error) {
-        if (error.message.includes('rate limit')) {
-          return { success: false, error: 'Too many requests. Please wait before trying again.' };
-        }
-        return { success: false, error: error.message };
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to send magic link' };
       }
 
       // Reset rate limit on success
@@ -214,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
-      await supabase.auth.signOut();
+      await authApi.logout();
     } finally {
       setUser(null);
       setSession(null);
