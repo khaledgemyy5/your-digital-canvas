@@ -1,10 +1,8 @@
 /**
  * Auth API Service
- * All authentication-related API calls go through this service.
- * This is designed to be replaceable with AWS Cognito.
+ * Mock implementation for development - replace with real API later
  */
 
-import apiClient from './client';
 import type { AdminUser, ApiResponse } from '@/types';
 
 interface LoginRequest {
@@ -18,42 +16,54 @@ interface LoginResponse {
   expiresAt: string;
 }
 
-interface RefreshResponse {
-  token: string;
-  expiresAt: string;
-}
-
-export const authApi = {
-  // Login
-  login: (credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> =>
-    apiClient.post<LoginResponse>('/auth/login', credentials),
-
-  // Logout
-  logout: (): Promise<ApiResponse<void>> =>
-    apiClient.post<void>('/auth/logout'),
-
-  // Get current user
-  getCurrentUser: (): Promise<ApiResponse<AdminUser>> =>
-    apiClient.get<AdminUser>('/auth/me'),
-
-  // Refresh token
-  refreshToken: (): Promise<ApiResponse<RefreshResponse>> =>
-    apiClient.post<RefreshResponse>('/auth/refresh'),
-
-  // Request password reset
-  requestPasswordReset: (email: string): Promise<ApiResponse<void>> =>
-    apiClient.post<void>('/auth/password-reset/request', { email }),
-
-  // Reset password
-  resetPassword: (token: string, newPassword: string): Promise<ApiResponse<void>> =>
-    apiClient.post<void>('/auth/password-reset/confirm', { token, newPassword }),
-
-  // Validate session
-  validateSession: (): Promise<ApiResponse<{ valid: boolean }>> =>
-    apiClient.get<{ valid: boolean }>('/auth/validate'),
+// Mock admin user for development
+const MOCK_ADMIN: AdminUser = {
+  id: '1',
+  email: 'admin@example.com',
+  name: 'Admin User',
+  role: 'admin',
 };
 
-// Token management (abstracted from UI)
+// Simulate API delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const authApi = {
+  // Login - mock implementation
+  login: async (credentials: LoginRequest): Promise<ApiResponse<LoginResponse>> => {
+    await delay(500); // Simulate network delay
+    
+    // For development, accept any email/password
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    
+    return {
+      success: true,
+      data: {
+        user: { ...MOCK_ADMIN, email: credentials.email },
+        token: 'mock-jwt-token-' + Date.now(),
+        expiresAt,
+      },
+      error: null,
+    };
+  },
+
+  // Logout
+  logout: async (): Promise<ApiResponse<void>> => {
+    await delay(200);
+    return { success: true, data: undefined, error: null };
+  },
+
+  // Get current user
+  getCurrentUser: async (): Promise<ApiResponse<AdminUser>> => {
+    await delay(200);
+    const token = tokenManager.getToken();
+    if (token && !tokenManager.isExpired()) {
+      return { success: true, data: MOCK_ADMIN, error: null };
+    }
+    return { success: false, data: null, error: 'Not authenticated' };
+  },
+};
+
+// Token management
 export const tokenManager = {
   setToken: (token: string, expiresAt: string) => {
     localStorage.setItem('auth_token', token);
