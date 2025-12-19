@@ -6,36 +6,31 @@ interface SkillCategory {
   skills: string[];
 }
 
-const skillCategories: SkillCategory[] = [
-  {
-    name: 'Frontend',
-    skills: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Framer Motion'],
-  },
-  {
-    name: 'Backend',
-    skills: ['Node.js', 'Python', 'PostgreSQL', 'REST APIs', 'GraphQL'],
-  },
-  {
-    name: 'Cloud & DevOps',
-    skills: ['AWS', 'Docker', 'Kubernetes', 'CI/CD', 'Terraform'],
-  },
-  {
-    name: 'Tools & Practices',
-    skills: ['Git', 'Agile', 'TDD', 'System Design', 'Performance Optimization'],
-  },
-];
+interface SkillsSectionProps {
+  title: string;
+  subtitle?: string | null;
+  content?: Record<string, unknown> | null;
+}
 
-export function SkillsSection() {
+export function SkillsSection({ title, subtitle, content }: SkillsSectionProps) {
+  // Extract categories from content
+  const categories = (content?.categories as SkillCategory[]) || [];
+  const additionalSkills = (content?.additional_skills as string[]) || [];
+
+  if (categories.length === 0) {
+    return null;
+  }
+
   return (
     <SectionWrapper id="skills" variant="alternate">
       <SectionHeader 
-        title="Skills & Expertise" 
-        subtitle="Technologies and tools I use to bring ideas to life."
+        title={title} 
+        subtitle={subtitle || undefined}
         centered
       />
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-        {skillCategories.map((category, categoryIndex) => (
+        {categories.map((category, categoryIndex) => (
           <div
             key={category.name}
             className={cn(
@@ -63,21 +58,23 @@ export function SkillsSection() {
       </div>
 
       {/* Additional skills bar */}
-      <div className="mt-12 md:mt-16 pt-12 border-t border-border">
-        <p className="text-center text-sm text-muted-foreground mb-6">
-          Also experienced with
-        </p>
-        <div className="flex flex-wrap justify-center gap-3">
-          {['Firebase', 'Redis', 'MongoDB', 'Jest', 'Cypress', 'Figma', 'Storybook', 'Webpack'].map((skill) => (
-            <span
-              key={skill}
-              className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-full hover:bg-primary/10 hover:text-primary transition-colors cursor-default"
-            >
-              {skill}
-            </span>
-          ))}
+      {additionalSkills.length > 0 && (
+        <div className="mt-12 md:mt-16 pt-12 border-t border-border">
+          <p className="text-center text-sm text-muted-foreground mb-6">
+            Also experienced with
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            {additionalSkills.map((skill) => (
+              <span
+                key={skill}
+                className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-full hover:bg-primary/10 hover:text-primary transition-colors cursor-default"
+              >
+                {skill}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </SectionWrapper>
   );
 }

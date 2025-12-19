@@ -155,7 +155,40 @@ Deno.serve(async (req) => {
       });
     }
 
-    // GET /api-preview/project/:id - Get single project for preview
+    // GET /api-preview/project/slug/:slug - Get single project by slug for preview
+    if (req.method === 'GET' && path.startsWith('/project/slug/')) {
+      const slug = path.replace('/project/slug/', '');
+      const usePublished = mode === 'published';
+      
+      let query = supabase
+        .from('projects')
+        .select('*, project_pages(*)')
+        .eq('slug', slug)
+        .is('deleted_at', null);
+      
+      // For published mode, only show published projects
+      if (usePublished) {
+        query = query.eq('is_published', true);
+      }
+      
+      const { data: project, error } = await query.single();
+      
+      if (error) throw error;
+      
+      return jsonResponse({
+        data: {
+          ...project,
+          title: usePublished ? project.title_published : project.title_draft,
+          description: usePublished ? project.description_published : project.description_draft,
+          pages: project.project_pages?.map((page: any) => ({
+            ...page,
+            content: usePublished ? page.content_published : page.content_draft,
+          })),
+        }
+      });
+    }
+
+    // GET /api-preview/project/:id - Get single project by ID for preview
     if (req.method === 'GET' && path.startsWith('/project/')) {
       const id = path.replace('/project/', '');
       const usePublished = mode === 'published';

@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 
 // Public pages
 import Index from "@/pages/Index";
+import ProjectDetail from "@/pages/public/ProjectDetail";
 import NotFound from "@/pages/NotFound";
 
 // Admin pages
@@ -50,6 +51,7 @@ const App = () => (
             <Routes>
               {/* Public routes */}
               <Route path="/" element={<Index />} />
+              <Route path="/projects/:slug" element={<ProjectDetail />} />
 
               {/* Preview routes */}
               <Route path="/preview" element={<PreviewSite />} />
