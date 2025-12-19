@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Save, Plus, Trash2, Upload, Link, Globe, Mail, FileText, Check, Eye } from 'lucide-react';
+import { Save, Plus, Trash2, Upload, Link, Globe, Mail, FileText, Eye, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
+import { usePublishing } from '@/hooks/usePublishing';
+import { PublishConfirmDialog } from '@/components/PublishConfirmDialog';
 
 interface SocialLink {
   id: string;
@@ -50,42 +52,48 @@ const socialPlatforms = [
 ];
 
 const Settings: React.FC = () => {
+  const { saveDraft: saveToStorage, publishItem, discardChanges, isPublishing, getDraft, getPublished } = usePublishing();
+  
   const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isPublished, setIsPublished] = useState(false);
   const [draftDiffersFromPublished, setDraftDiffersFromPublished] = useState(false);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   // Load draft and published settings on mount
   useEffect(() => {
-    const savedDraft = localStorage.getItem('settings_draft');
-    const savedPublished = localStorage.getItem('settings_published');
+    const draft = getDraft<SiteSettings>('settings', 'global');
+    const published = getPublished<SiteSettings>('settings', 'global');
     
-    if (savedDraft) {
-      setSettings(JSON.parse(savedDraft));
-    } else if (savedPublished) {
-      setSettings(JSON.parse(savedPublished));
+    if (draft) {
+      setSettings(draft);
+    } else if (published) {
+      setSettings(published);
     }
     
-    if (savedPublished) {
+    if (published) {
       setIsPublished(true);
-      if (savedDraft) {
-        setDraftDiffersFromPublished(savedDraft !== savedPublished);
+      if (draft) {
+        setDraftDiffersFromPublished(JSON.stringify(draft) !== JSON.stringify(published));
       }
     }
-  }, []);
+  }, [getDraft, getPublished]);
 
   // Auto-save draft
   const saveDraft = useCallback(() => {
-    localStorage.setItem('settings_draft', JSON.stringify(settings));
+    saveToStorage('settings', 'global', settings);
     setLastSaved(new Date());
     setHasUnsavedChanges(false);
     
-    const savedPublished = localStorage.getItem('settings_published');
-    if (savedPublished) {
-      setDraftDiffersFromPublished(JSON.stringify(settings) !== savedPublished);
+    const published = getPublished<SiteSettings>('settings', 'global');
+    if (published) {
+      setDraftDiffersFromPublished(JSON.stringify(settings) !== JSON.stringify(published));
+    } else {
+      setDraftDiffersFromPublished(true);
     }
-  }, [settings]);
+  }, [settings, saveToStorage, getPublished]);
 
   // Auto-save after 2 seconds of inactivity
   useEffect(() => {
@@ -104,14 +112,37 @@ const Settings: React.FC = () => {
     setHasUnsavedChanges(true);
   };
 
-  const handlePublish = () => {
-    localStorage.setItem('settings_published', JSON.stringify(settings));
-    localStorage.setItem('settings_draft', JSON.stringify(settings));
-    setIsPublished(true);
-    setDraftDiffersFromPublished(false);
+  const handlePublish = async () => {
+    // Save draft first
+    saveDraft();
+    
+    const result = await publishItem('settings', 'global');
+    setShowPublishDialog(false);
+    
+    if (result.success) {
+      setIsPublished(true);
+      setDraftDiffersFromPublished(false);
+      toast.success('Settings published successfully!');
+    } else {
+      toast.error(result.error || 'Failed to publish settings');
+    }
+  };
+
+  const handleDiscard = () => {
+    discardChanges('settings', 'global');
+    setShowDiscardDialog(false);
+    
+    // Reload from published version
+    const published = getPublished<SiteSettings>('settings', 'global');
+    if (published) {
+      setSettings(published);
+    } else {
+      setSettings(defaultSettings);
+    }
+    
     setHasUnsavedChanges(false);
-    setLastSaved(new Date());
-    toast.success('Settings published successfully!');
+    setDraftDiffersFromPublished(false);
+    toast.success('Changes discarded');
   };
 
   const handleSaveDraft = () => {
@@ -154,7 +185,7 @@ const Settings: React.FC = () => {
   };
 
   const openPreview = () => {
-    localStorage.setItem('settings_draft', JSON.stringify(settings));
+    saveToStorage('settings', 'global', settings);
     window.open('/preview', '_blank');
   };
 
@@ -193,8 +224,19 @@ const Settings: React.FC = () => {
             <Save className="h-4 w-4 mr-2" />
             Save Draft
           </Button>
-          <Button onClick={handlePublish} size="sm">
-            <Check className="h-4 w-4 mr-2" />
+          {draftDiffersFromPublished && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowDiscardDialog(true)}
+              className="text-destructive hover:text-destructive"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Discard
+            </Button>
+          )}
+          <Button onClick={() => setShowPublishDialog(true)} size="sm" disabled={isPublishing}>
+            <Upload className="h-4 w-4 mr-2" />
             Publish
           </Button>
         </div>
@@ -471,6 +513,25 @@ const Settings: React.FC = () => {
           Unsaved changes - auto-saving...
         </div>
       )}
+
+      {/* Publish Confirmation Dialog */}
+      <PublishConfirmDialog
+        open={showPublishDialog}
+        onOpenChange={setShowPublishDialog}
+        onConfirm={handlePublish}
+        isLoading={isPublishing}
+        title="Publish Settings?"
+        variant="publish"
+      />
+
+      {/* Discard Confirmation Dialog */}
+      <PublishConfirmDialog
+        open={showDiscardDialog}
+        onOpenChange={setShowDiscardDialog}
+        onConfirm={handleDiscard}
+        title="Discard Settings Changes?"
+        variant="discard"
+      />
     </div>
   );
 };

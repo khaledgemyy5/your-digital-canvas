@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Eye, Plus, X, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, Eye, Plus, X, ExternalLink, Upload, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-
+import { usePublishing } from '@/hooks/usePublishing';
+import { PublishConfirmDialog } from '@/components/PublishConfirmDialog';
 interface ProjectData {
   id: string;
   title: string;
@@ -77,7 +78,9 @@ const ProjectEditor = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { saveDraft, publishItem, discardChanges, hasUnpublishedChanges, isPublishing, getDraft, getPublished } = usePublishing();
 
+  const projectId = id || 'new';
   const isNew = !id || !mockProjects[id];
 
   const [title, setTitle] = useState('');
@@ -91,11 +94,18 @@ const ProjectEditor = () => {
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
-  // Load project data
+  // Load project data from draft first, then published, then mock
   useEffect(() => {
-    if (id && mockProjects[id]) {
-      const data = mockProjects[id];
+    const draft = getDraft<ProjectData>('project', projectId);
+    const published = getPublished<ProjectData>('project', projectId);
+    const mockData = id ? mockProjects[id] : null;
+    
+    const data = draft || published || mockData;
+    
+    if (data) {
       setTitle(data.title);
       setSummary(data.summary);
       setDescription(data.description);
@@ -116,18 +126,33 @@ const ProjectEditor = () => {
       setVisible(false);
       setStatus('draft');
     }
-  }, [id]);
+  }, [id, projectId, getDraft, getPublished]);
 
-  // Auto-save
+  // Build current project data
+  const getCurrentData = useCallback((): ProjectData => ({
+    id: projectId,
+    title,
+    summary,
+    description,
+    role,
+    technologies,
+    images,
+    link,
+    visible,
+    status,
+  }), [projectId, title, summary, description, role, technologies, images, link, visible, status]);
+
+  // Auto-save to draft
   const autoSave = useCallback(() => {
     if (!hasChanges) return;
+    saveDraft('project', projectId, getCurrentData());
     setLastSaved(new Date());
     setHasChanges(false);
     toast({
       description: 'Draft saved automatically',
       duration: 2000,
     });
-  }, [hasChanges, toast]);
+  }, [hasChanges, saveDraft, projectId, getCurrentData, toast]);
 
   useEffect(() => {
     if (!hasChanges) return;
@@ -167,21 +192,64 @@ const ProjectEditor = () => {
     setImages(images.filter((_, i) => i !== index));
   };
 
-  const handlePublish = () => {
-    setStatus('published');
+  const handlePublish = async () => {
+    // Save draft first
+    saveDraft('project', projectId, { ...getCurrentData(), status: 'published' });
+    
+    const result = await publishItem('project', projectId);
+    setShowPublishDialog(false);
+    
+    if (result.success) {
+      setStatus('published');
+      setHasChanges(false);
+      toast({
+        title: 'Project published',
+        description: 'Your changes are now live.',
+      });
+    } else {
+      toast({
+        title: 'Publish failed',
+        description: result.error || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDiscard = () => {
+    discardChanges('project', projectId);
+    setShowDiscardDialog(false);
+    
+    // Reload from published version
+    const published = getPublished<ProjectData>('project', projectId);
+    const mockData = id ? mockProjects[id] : null;
+    const data = published || mockData;
+    
+    if (data) {
+      setTitle(data.title);
+      setSummary(data.summary);
+      setDescription(data.description);
+      setRole(data.role);
+      setTechnologies([...data.technologies]);
+      setImages([...data.images]);
+      setLink(data.link || '');
+      setVisible(data.visible);
+      setStatus(data.status);
+    }
+    
     setHasChanges(false);
     toast({
-      title: 'Project published',
-      description: 'Your changes are now live.',
+      description: 'Changes discarded',
     });
-    navigate('/admin/projects');
   };
 
   const handlePreview = () => {
-    window.open(`/preview/project/${id}`, '_blank');
+    // Save draft before preview
+    saveDraft('project', projectId, getCurrentData());
+    window.open(`/preview/project/${projectId}`, '_blank');
   };
 
   const handlePreviewSite = () => {
+    saveDraft('project', projectId, getCurrentData());
     window.open('/preview', '_blank');
   };
 
@@ -225,8 +293,19 @@ const ProjectEditor = () => {
             <Eye className="h-4 w-4 mr-1" />
             Preview
           </Button>
-          <Button size="sm" onClick={handlePublish}>
-            <Save className="h-4 w-4 mr-1" />
+          {hasUnpublishedChanges('project', projectId) && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowDiscardDialog(true)}
+              className="text-destructive hover:text-destructive"
+            >
+              <RotateCcw className="h-4 w-4 mr-1" />
+              Discard
+            </Button>
+          )}
+          <Button size="sm" onClick={() => setShowPublishDialog(true)} disabled={isPublishing}>
+            <Upload className="h-4 w-4 mr-1" />
             Publish
           </Button>
         </div>
@@ -429,6 +508,25 @@ const ProjectEditor = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Publish Confirmation Dialog */}
+      <PublishConfirmDialog
+        open={showPublishDialog}
+        onOpenChange={setShowPublishDialog}
+        onConfirm={handlePublish}
+        isLoading={isPublishing}
+        title={`Publish "${title}"?`}
+        variant="publish"
+      />
+
+      {/* Discard Confirmation Dialog */}
+      <PublishConfirmDialog
+        open={showDiscardDialog}
+        onOpenChange={setShowDiscardDialog}
+        onConfirm={handleDiscard}
+        title={`Discard changes to "${title}"?`}
+        variant="discard"
+      />
     </div>
   );
 };
