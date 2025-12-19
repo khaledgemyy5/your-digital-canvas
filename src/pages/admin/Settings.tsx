@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Save, Plus, Trash2, Upload, Link, Globe, Mail, FileText, Eye, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Save, Plus, Trash2, Upload, Globe, Mail, FileText, Eye, RotateCcw, Link as LinkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,186 +8,304 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { toast } from 'sonner';
-import { usePublishing } from '@/hooks/usePublishing';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { settingsApi, type SocialLink } from '@/services/api/settings';
+import { publishApi } from '@/services/api/publish';
 import { PublishConfirmDialog } from '@/components/PublishConfirmDialog';
 
-interface SocialLink {
+interface LocalSocialLink {
   id: string;
   platform: string;
   url: string;
+  isNew?: boolean;
 }
-
-interface SiteSettings {
-  siteTitle: string;
-  metaDescription: string;
-  contactEmail: string;
-  socialLinks: SocialLink[];
-  resumeType: 'upload' | 'url';
-  resumeUrl: string;
-  resumeFileName: string;
-}
-
-const defaultSettings: SiteSettings = {
-  siteTitle: '',
-  metaDescription: '',
-  contactEmail: '',
-  socialLinks: [],
-  resumeType: 'url',
-  resumeUrl: '',
-  resumeFileName: '',
-};
 
 const socialPlatforms = [
-  'GitHub',
-  'LinkedIn',
-  'Twitter',
-  'Instagram',
-  'YouTube',
-  'Dribbble',
-  'Behance',
-  'Medium',
-  'Dev.to',
-  'Other',
+  'GitHub', 'LinkedIn', 'Twitter', 'Instagram', 'YouTube',
+  'Dribbble', 'Behance', 'Medium', 'Dev.to', 'Other',
 ];
 
 const Settings: React.FC = () => {
-  const { saveDraft: saveToStorage, publishItem, discardChanges, isPublishing, getDraft, getPublished } = usePublishing();
+  const { toast } = useToast();
   
-  const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  // Loading states
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  // Form state
+  const [siteTitle, setSiteTitle] = useState('');
+  const [metaDescription, setMetaDescription] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerTitle, setOwnerTitle] = useState('');
+  const [socialLinks, setSocialLinks] = useState<LocalSocialLink[]>([]);
+  const [resumeType, setResumeType] = useState<'url' | 'upload'>('url');
+  const [resumeUrl, setResumeUrl] = useState('');
+
+  // Original state for comparison
+  const [originalSettings, setOriginalSettings] = useState<Record<string, unknown>>({});
   const [isPublished, setIsPublished] = useState(false);
-  const [draftDiffersFromPublished, setDraftDiffersFromPublished] = useState(false);
+
+  // Change tracking
+  const [hasChanges, setHasChanges] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Dialog state
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
-  // Load draft and published settings on mount
+  // Load settings
   useEffect(() => {
-    const draft = getDraft<SiteSettings>('settings', 'global');
-    const published = getPublished<SiteSettings>('settings', 'global');
-    
-    if (draft) {
-      setSettings(draft);
-    } else if (published) {
-      setSettings(published);
-    }
-    
-    if (published) {
-      setIsPublished(true);
-      if (draft) {
-        setDraftDiffersFromPublished(JSON.stringify(draft) !== JSON.stringify(published));
+    const loadSettings = async () => {
+      setIsLoading(true);
+
+      try {
+        // Load site settings
+        const siteResult = await settingsApi.getSiteSettings();
+        if (siteResult.success && siteResult.data) {
+          const data = siteResult.data;
+          setSiteTitle((data.site_title?.draft as string) || '');
+          setMetaDescription((data.meta_description?.draft as string) || '');
+          setContactEmail((data.contact_email?.draft as string) || '');
+          setOwnerName((data.owner_name?.draft as string) || '');
+          setOwnerTitle((data.owner_title?.draft as string) || '');
+          
+          setOriginalSettings({
+            site_title: (data.site_title?.draft as string) || '',
+            meta_description: (data.meta_description?.draft as string) || '',
+            contact_email: (data.contact_email?.draft as string) || '',
+            owner_name: (data.owner_name?.draft as string) || '',
+            owner_title: (data.owner_title?.draft as string) || '',
+          });
+          
+          // Check if any are published
+          setIsPublished(Object.values(data).some(v => v?.is_published));
+        }
+
+        // Load social links
+        const socialResult = await settingsApi.getSocialLinks();
+        if (socialResult.success && socialResult.data) {
+          setSocialLinks(socialResult.data.map(link => ({
+            id: link.id,
+            platform: link.platform,
+            url: link.url_draft || '',
+          })));
+        }
+
+        // Load resume
+        const resumeResult = await settingsApi.getResume();
+        if (resumeResult.success && resumeResult.data) {
+          const resume = resumeResult.data;
+          if (resume.external_url_draft) {
+            setResumeType('url');
+            setResumeUrl(resume.external_url_draft);
+          } else if (resume.file_url_draft) {
+            setResumeType('upload');
+            setResumeUrl(resume.file_url_draft);
+          }
+        }
+      } catch (error) {
+        toast({ title: 'Failed to load settings', variant: 'destructive' });
       }
-    }
-  }, [getDraft, getPublished]);
 
-  // Auto-save draft
-  const saveDraft = useCallback(() => {
-    saveToStorage('settings', 'global', settings);
-    setLastSaved(new Date());
-    setHasUnsavedChanges(false);
-    
-    const published = getPublished<SiteSettings>('settings', 'global');
-    if (published) {
-      setDraftDiffersFromPublished(JSON.stringify(settings) !== JSON.stringify(published));
-    } else {
-      setDraftDiffersFromPublished(true);
-    }
-  }, [settings, saveToStorage, getPublished]);
+      setIsLoading(false);
+    };
 
-  // Auto-save after 2 seconds of inactivity
+    loadSettings();
+  }, [toast]);
+
+  // Track changes
   useEffect(() => {
-    if (!hasUnsavedChanges) return;
+    if (isLoading) return;
     
-    const timer = setTimeout(() => {
+    const currentSettings = {
+      site_title: siteTitle,
+      meta_description: metaDescription,
+      contact_email: contactEmail,
+      owner_name: ownerName,
+      owner_title: ownerTitle,
+    };
+    
+    const changed = JSON.stringify(currentSettings) !== JSON.stringify(originalSettings);
+    setHasChanges(changed);
+  }, [siteTitle, metaDescription, contactEmail, ownerName, ownerTitle, originalSettings, isLoading]);
+
+  // Save draft
+  const saveDraft = useCallback(async () => {
+    if (!hasChanges) return;
+
+    setIsSaving(true);
+    
+    const result = await settingsApi.updateSiteSettings({
+      site_title: siteTitle,
+      meta_description: metaDescription,
+      contact_email: contactEmail,
+      owner_name: ownerName,
+      owner_title: ownerTitle,
+    });
+
+    if (result.success) {
+      setOriginalSettings({
+        site_title: siteTitle,
+        meta_description: metaDescription,
+        contact_email: contactEmail,
+        owner_name: ownerName,
+        owner_title: ownerTitle,
+      });
+      setHasChanges(false);
+      setLastSaved(new Date());
+      toast({ description: 'Settings saved', duration: 2000 });
+    } else {
+      toast({ title: 'Failed to save', description: result.error, variant: 'destructive' });
+    }
+
+    setIsSaving(false);
+  }, [hasChanges, siteTitle, metaDescription, contactEmail, ownerName, ownerTitle, toast]);
+
+  // Auto-save on changes
+  useEffect(() => {
+    if (!hasChanges) return;
+    
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+    }
+    
+    autoSaveTimer.current = setTimeout(() => {
       saveDraft();
-      toast.success('Draft saved automatically');
     }, 2000);
 
-    return () => clearTimeout(timer);
-  }, [settings, hasUnsavedChanges, saveDraft]);
+    return () => {
+      if (autoSaveTimer.current) {
+        clearTimeout(autoSaveTimer.current);
+      }
+    };
+  }, [siteTitle, metaDescription, contactEmail, ownerName, ownerTitle, hasChanges, saveDraft]);
 
-  const updateSettings = (updates: Partial<SiteSettings>) => {
-    setSettings(prev => ({ ...prev, ...updates }));
-    setHasUnsavedChanges(true);
-  };
-
+  // Publish
   const handlePublish = async () => {
-    // Save draft first
-    saveDraft();
-    
-    const result = await publishItem('settings', 'global');
+    await saveDraft();
+
+    setIsPublishing(true);
+    const result = await publishApi.publishSettings();
     setShowPublishDialog(false);
-    
+
     if (result.success) {
       setIsPublished(true);
-      setDraftDiffersFromPublished(false);
-      toast.success('Settings published successfully!');
+      toast({ title: 'Settings published', description: 'Changes are now live.' });
     } else {
-      toast.error(result.error || 'Failed to publish settings');
+      toast({ title: 'Failed to publish', description: result.error, variant: 'destructive' });
     }
+    setIsPublishing(false);
   };
 
-  const handleDiscard = () => {
-    discardChanges('settings', 'global');
+  // Discard
+  const handleDiscard = async () => {
+    // Reload from API
+    const result = await settingsApi.getSiteSettings();
     setShowDiscardDialog(false);
-    
-    // Reload from published version
-    const published = getPublished<SiteSettings>('settings', 'global');
-    if (published) {
-      setSettings(published);
-    } else {
-      setSettings(defaultSettings);
-    }
-    
-    setHasUnsavedChanges(false);
-    setDraftDiffersFromPublished(false);
-    toast.success('Changes discarded');
-  };
 
-  const handleSaveDraft = () => {
-    saveDraft();
-    toast.success('Draft saved');
-  };
-
-  // Social Links Management
-  const addSocialLink = () => {
-    const newLink: SocialLink = {
-      id: Date.now().toString(),
-      platform: 'GitHub',
-      url: '',
-    };
-    updateSettings({ socialLinks: [...settings.socialLinks, newLink] });
-  };
-
-  const updateSocialLink = (id: string, field: 'platform' | 'url', value: string) => {
-    const updated = settings.socialLinks.map(link =>
-      link.id === id ? { ...link, [field]: value } : link
-    );
-    updateSettings({ socialLinks: updated });
-  };
-
-  const removeSocialLink = (id: string) => {
-    updateSettings({ socialLinks: settings.socialLinks.filter(link => link.id !== id) });
-  };
-
-  // Resume file handling (simulated - stores filename only)
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // In a real app, this would upload to storage and get a URL
-      updateSettings({ 
-        resumeFileName: file.name,
-        resumeUrl: URL.createObjectURL(file), // Temporary URL for demo
+    if (result.success && result.data) {
+      const data = result.data;
+      // Revert to published values
+      setSiteTitle((data.site_title?.published as string) || '');
+      setMetaDescription((data.meta_description?.published as string) || '');
+      setContactEmail((data.contact_email?.published as string) || '');
+      setOwnerName((data.owner_name?.published as string) || '');
+      setOwnerTitle((data.owner_title?.published as string) || '');
+      
+      // Also update originals to match
+      setOriginalSettings({
+        site_title: (data.site_title?.published as string) || '',
+        meta_description: (data.meta_description?.published as string) || '',
+        contact_email: (data.contact_email?.published as string) || '',
+        owner_name: (data.owner_name?.published as string) || '',
+        owner_title: (data.owner_title?.published as string) || '',
       });
-      toast.success(`Resume "${file.name}" selected`);
+      
+      // Save the reverted values as new draft
+      await settingsApi.updateSiteSettings({
+        site_title: (data.site_title?.published as string) || '',
+        meta_description: (data.meta_description?.published as string) || '',
+        contact_email: (data.contact_email?.published as string) || '',
+        owner_name: (data.owner_name?.published as string) || '',
+        owner_title: (data.owner_title?.published as string) || '',
+      });
+
+      setHasChanges(false);
+      toast({ description: 'Changes discarded' });
     }
   };
 
+  // Social link management
+  const addSocialLink = async () => {
+    const result = await settingsApi.createSocialLink({
+      platform: 'GitHub',
+      url_draft: '',
+    });
+
+    if (result.success && result.data) {
+      setSocialLinks([...socialLinks, {
+        id: result.data.id,
+        platform: result.data.platform,
+        url: result.data.url_draft || '',
+      }]);
+      toast({ description: 'Social link added', duration: 2000 });
+    }
+  };
+
+  const updateSocialLink = async (id: string, field: 'platform' | 'url', value: string) => {
+    setSocialLinks(socialLinks.map(link =>
+      link.id === id ? { ...link, [field]: value } : link
+    ));
+
+    // Debounced save to API
+    setTimeout(async () => {
+      const link = socialLinks.find(l => l.id === id);
+      if (link) {
+        await settingsApi.updateSocialLink(id, {
+          platform: field === 'platform' ? value : link.platform,
+          url_draft: field === 'url' ? value : link.url,
+        });
+      }
+    }, 1000);
+  };
+
+  const removeSocialLink = async (id: string) => {
+    await settingsApi.deleteSocialLink(id);
+    setSocialLinks(socialLinks.filter(link => link.id !== id));
+    toast({ description: 'Social link removed', duration: 2000 });
+  };
+
+  // Resume
+  const handleResumeUrlChange = async (url: string) => {
+    setResumeUrl(url);
+    // Save to API
+    await settingsApi.updateResume({
+      external_url_draft: resumeType === 'url' ? url : null,
+      file_url_draft: resumeType === 'upload' ? url : null,
+    });
+  };
+
+  // Preview
   const openPreview = () => {
-    saveToStorage('settings', 'global', settings);
     window.open('/preview', '_blank');
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-24" />
+        </div>
+        <Skeleton className="h-64" />
+        <Skeleton className="h-48" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -196,21 +314,18 @@ const Settings: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <div className="flex items-center gap-2 mt-1">
-            {isPublished ? (
-              <Badge variant="default" className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30">
-                Published
-              </Badge>
-            ) : (
-              <Badge variant="secondary">Draft Only</Badge>
-            )}
-            {draftDiffersFromPublished && (
+            <Badge variant={isPublished ? 'default' : 'secondary'}>
+              {isPublished ? 'Published' : 'Draft Only'}
+            </Badge>
+            {hasChanges && (
               <Badge variant="outline" className="text-amber-600 border-amber-500/30">
-                Unpublished Changes
+                Unsaved Changes
               </Badge>
             )}
-            {lastSaved && (
+            {isSaving && <span className="text-xs text-muted-foreground">Saving...</span>}
+            {lastSaved && !hasChanges && !isSaving && (
               <span className="text-xs text-muted-foreground">
-                Last saved: {lastSaved.toLocaleTimeString()}
+                Saved {lastSaved.toLocaleTimeString()}
               </span>
             )}
           </div>
@@ -220,11 +335,11 @@ const Settings: React.FC = () => {
             <Eye className="h-4 w-4 mr-2" />
             Preview
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSaveDraft}>
+          <Button variant="outline" size="sm" onClick={saveDraft} disabled={!hasChanges || isSaving}>
             <Save className="h-4 w-4 mr-2" />
             Save Draft
           </Button>
-          {draftDiffersFromPublished && (
+          {isPublished && hasChanges && (
             <Button 
               variant="outline" 
               size="sm" 
@@ -258,9 +373,7 @@ const Settings: React.FC = () => {
                 <Globe className="h-5 w-5" />
                 Site Information
               </CardTitle>
-              <CardDescription>
-                Basic information about your portfolio site
-              </CardDescription>
+              <CardDescription>Basic information about your portfolio</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -268,12 +381,29 @@ const Settings: React.FC = () => {
                 <Input
                   id="siteTitle"
                   placeholder="John Doe - Portfolio"
-                  value={settings.siteTitle}
-                  onChange={(e) => updateSettings({ siteTitle: e.target.value })}
+                  value={siteTitle}
+                  onChange={(e) => setSiteTitle(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Displayed in the browser tab and site header
-                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ownerName">Your Name</Label>
+                <Input
+                  id="ownerName"
+                  placeholder="John Doe"
+                  value={ownerName}
+                  onChange={(e) => setOwnerName(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ownerTitle">Your Title</Label>
+                <Input
+                  id="ownerTitle"
+                  placeholder="Software Engineer"
+                  value={ownerTitle}
+                  onChange={(e) => setOwnerTitle(e.target.value)}
+                />
               </div>
 
               <div className="space-y-2">
@@ -285,13 +415,10 @@ const Settings: React.FC = () => {
                     type="email"
                     placeholder="hello@example.com"
                     className="pl-10"
-                    value={settings.contactEmail}
-                    onChange={(e) => updateSettings({ contactEmail: e.target.value })}
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Used in the contact section and footer
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -302,36 +429,33 @@ const Settings: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Search Engine Optimization</CardTitle>
-              <CardDescription>
-                Optimize how your site appears in search results
-              </CardDescription>
+              <CardDescription>Optimize how your site appears in search results</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="metaDescription">Meta Description</Label>
                 <Textarea
                   id="metaDescription"
-                  placeholder="A brief description of your portfolio for search engines..."
-                  value={settings.metaDescription}
-                  onChange={(e) => updateSettings({ metaDescription: e.target.value })}
+                  placeholder="A brief description of your portfolio..."
+                  value={metaDescription}
+                  onChange={(e) => setMetaDescription(e.target.value)}
                   rows={3}
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Recommended: 150-160 characters</span>
-                  <span className={settings.metaDescription.length > 160 ? 'text-destructive' : ''}>
-                    {settings.metaDescription.length}/160
+                  <span className={metaDescription.length > 160 ? 'text-destructive' : ''}>
+                    {metaDescription.length}/160
                   </span>
                 </div>
               </div>
 
-              {/* Preview */}
               <div className="rounded-lg border bg-muted/30 p-4 space-y-1">
                 <p className="text-sm font-medium text-primary">
-                  {settings.siteTitle || 'Your Site Title'}
+                  {siteTitle || 'Your Site Title'}
                 </p>
                 <p className="text-xs text-emerald-600">yoursite.com</p>
                 <p className="text-xs text-muted-foreground line-clamp-2">
-                  {settings.metaDescription || 'Your meta description will appear here...'}
+                  {metaDescription || 'Your meta description will appear here...'}
                 </p>
               </div>
             </CardContent>
@@ -343,19 +467,17 @@ const Settings: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Social Links</CardTitle>
-              <CardDescription>
-                Add links to your social media profiles
-              </CardDescription>
+              <CardDescription>Add links to your social media profiles</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {settings.socialLinks.length === 0 ? (
+              {socialLinks.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <Link className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <LinkIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>No social links added yet</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {settings.socialLinks.map((link, index) => (
+                  {socialLinks.map((link, index) => (
                     <div key={link.id} className="flex gap-2 items-start">
                       <div className="flex-shrink-0 w-8 h-10 flex items-center justify-center text-muted-foreground text-sm">
                         {index + 1}.
@@ -363,7 +485,7 @@ const Settings: React.FC = () => {
                       <select
                         value={link.platform}
                         onChange={(e) => updateSocialLink(link.id, 'platform', e.target.value)}
-                        className="flex h-10 w-36 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                        className="flex h-10 w-36 rounded-md border border-input bg-background px-3 py-2 text-sm"
                       >
                         {socialPlatforms.map(platform => (
                           <option key={platform} value={platform}>{platform}</option>
@@ -404,14 +526,12 @@ const Settings: React.FC = () => {
                 <FileText className="h-5 w-5" />
                 Resume / CV
               </CardTitle>
-              <CardDescription>
-                Add your resume for visitors to download
-              </CardDescription>
+              <CardDescription>Add your resume for visitors to download</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <RadioGroup
-                value={settings.resumeType}
-                onValueChange={(value: 'upload' | 'url') => updateSettings({ resumeType: value })}
+                value={resumeType}
+                onValueChange={(value: 'url' | 'upload') => setResumeType(value)}
                 className="space-y-3"
               >
                 <div className="flex items-center space-x-3">
@@ -423,113 +543,48 @@ const Settings: React.FC = () => {
                 <div className="flex items-center space-x-3">
                   <RadioGroupItem value="upload" id="resume-upload" />
                   <Label htmlFor="resume-upload" className="font-normal cursor-pointer">
-                    Upload file
+                    Direct URL to PDF
                   </Label>
                 </div>
               </RadioGroup>
 
-              {settings.resumeType === 'url' ? (
-                <div className="space-y-2">
-                  <Label htmlFor="resumeUrl">Resume URL</Label>
-                  <div className="relative">
-                    <Link className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="resumeUrl"
-                      placeholder="https://drive.google.com/..."
-                      className="pl-10"
-                      value={settings.resumeUrl}
-                      onChange={(e) => updateSettings({ resumeUrl: e.target.value })}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Make sure the link is publicly accessible
-                  </p>
+              <div className="space-y-2">
+                <Label htmlFor="resumeUrl">Resume URL</Label>
+                <div className="relative">
+                  <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="resumeUrl"
+                    placeholder="https://..."
+                    className="pl-10"
+                    value={resumeUrl}
+                    onChange={(e) => handleResumeUrlChange(e.target.value)}
+                  />
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label>Upload Resume</Label>
-                  <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      onChange={handleResumeUpload}
-                      className="hidden"
-                      id="resume-file"
-                    />
-                    <label htmlFor="resume-file" className="cursor-pointer">
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      {settings.resumeFileName ? (
-                        <div>
-                          <p className="font-medium text-foreground">{settings.resumeFileName}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Click to replace</p>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm text-muted-foreground">
-                            Click to upload or drag and drop
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            PDF, DOC, DOCX (max 10MB)
-                          </p>
-                        </div>
-                      )}
-                    </label>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Note: File uploads require backend storage to persist
-                  </p>
-                </div>
-              )}
-
-              {(settings.resumeUrl || settings.resumeFileName) && (
-                <div className="rounded-lg border bg-muted/30 p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-8 w-8 text-primary" />
-                    <div>
-                      <p className="font-medium text-sm">
-                        {settings.resumeFileName || 'External Resume'}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                        {settings.resumeUrl}
-                      </p>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={settings.resumeUrl} target="_blank" rel="noopener noreferrer">
-                      View
-                    </a>
-                  </Button>
-                </div>
-              )}
+                <p className="text-xs text-muted-foreground">
+                  Make sure the link is publicly accessible
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Unsaved Changes Indicator */}
-      {hasUnsavedChanges && (
-        <div className="fixed bottom-4 right-4 bg-amber-500/10 border border-amber-500/30 text-amber-600 px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-          Unsaved changes - auto-saving...
-        </div>
-      )}
-
-      {/* Publish Confirmation Dialog */}
+      {/* Dialogs */}
       <PublishConfirmDialog
         open={showPublishDialog}
         onOpenChange={setShowPublishDialog}
         onConfirm={handlePublish}
+        title="Publish Settings"
+        description="This will make your settings changes live on the public site."
         isLoading={isPublishing}
-        title="Publish Settings?"
-        variant="publish"
       />
 
-      {/* Discard Confirmation Dialog */}
       <PublishConfirmDialog
         open={showDiscardDialog}
         onOpenChange={setShowDiscardDialog}
         onConfirm={handleDiscard}
-        title="Discard Settings Changes?"
+        title="Discard Changes"
+        description="This will revert to the last published settings. Unsaved changes will be lost."
         variant="discard"
       />
     </div>

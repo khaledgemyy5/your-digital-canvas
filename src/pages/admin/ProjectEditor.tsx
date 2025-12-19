@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Eye, Plus, X, ExternalLink, Upload, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Upload, Eye, RotateCcw, ExternalLink, Plus, X, Github } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,278 +8,311 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { usePublishing } from '@/hooks/usePublishing';
+import { projectsApi, type Project } from '@/services/api/projects';
+import { publishApi } from '@/services/api/publish';
 import { PublishConfirmDialog } from '@/components/PublishConfirmDialog';
-interface ProjectData {
-  id: string;
-  title: string;
-  summary: string;
-  description: string;
-  role: string;
-  technologies: string[];
-  images: string[];
-  link?: string;
-  visible: boolean;
-  status: 'draft' | 'published';
-}
-
-// Mock data
-const mockProjects: Record<string, ProjectData> = {
-  '1': {
-    id: '1',
-    title: 'E-Commerce Platform',
-    summary: 'Full-stack online shopping solution',
-    description: 'A complete e-commerce solution built with modern technologies. Features include product catalog, shopping cart, secure checkout, and order management.',
-    role: 'Lead Developer - Responsible for architecture decisions, frontend development, and API design.',
-    technologies: ['React', 'Node.js', 'PostgreSQL', 'Stripe'],
-    images: ['https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800'],
-    link: 'https://example.com',
-    visible: true,
-    status: 'published',
-  },
-  '2': {
-    id: '2',
-    title: 'Task Management App',
-    summary: 'Collaborative project management tool',
-    description: 'A real-time collaborative task management application with drag-and-drop interfaces and team collaboration features.',
-    role: 'Full-stack Developer - Built real-time sync features and collaborative editing.',
-    technologies: ['React', 'Firebase', 'Tailwind CSS'],
-    images: [],
-    link: 'https://example.com',
-    visible: true,
-    status: 'published',
-  },
-  '3': {
-    id: '3',
-    title: 'Portfolio Website',
-    summary: 'Personal portfolio with CMS',
-    description: 'A personal portfolio website with an integrated content management system for easy updates.',
-    role: 'Solo Developer - Designed and built the entire application.',
-    technologies: ['Next.js', 'Contentful', 'Vercel'],
-    images: [],
-    visible: true,
-    status: 'draft',
-  },
-  '4': {
-    id: '4',
-    title: 'Analytics Dashboard',
-    summary: 'Real-time data visualization',
-    description: 'A dashboard for visualizing business metrics in real-time with interactive charts and customizable views.',
-    role: 'Frontend Developer - Created data visualization components.',
-    technologies: ['React', 'D3.js', 'WebSockets'],
-    images: [],
-    visible: false,
-    status: 'published',
-  },
-};
 
 const ProjectEditor = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { saveDraft, publishItem, discardChanges, hasUnpublishedChanges, isPublishing, getDraft, getPublished } = usePublishing();
+  
+  const isNew = id === 'new';
 
-  const projectId = id || 'new';
-  const isNew = !id || !mockProjects[id];
+  // State
+  const [project, setProject] = useState<Project | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Form state
   const [title, setTitle] = useState('');
-  const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
-  const [role, setRole] = useState('');
+  const [slug, setSlug] = useState('');
   const [technologies, setTechnologies] = useState<string[]>([]);
-  const [images, setImages] = useState<string[]>([]);
-  const [link, setLink] = useState('');
-  const [visible, setVisible] = useState(true);
-  const [status, setStatus] = useState<'draft' | 'published'>('draft');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [githubUrl, setGithubUrl] = useState('');
+  const [externalUrl, setExternalUrl] = useState('');
+  const [isVisible, setIsVisible] = useState(true);
+  const [isFeatured, setIsFeatured] = useState(false);
+
+  // Change tracking
   const [hasChanges, setHasChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Dialog state
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
-  // Load project data from draft first, then published, then mock
+  // Check if draft differs from published
+  const hasDraftChanges = useCallback(() => {
+    if (!project) return false;
+    return (
+      project.title_draft !== project.title_published ||
+      project.description_draft !== project.description_published
+    );
+  }, [project]);
+
+  // Load project data
   useEffect(() => {
-    const draft = getDraft<ProjectData>('project', projectId);
-    const published = getPublished<ProjectData>('project', projectId);
-    const mockData = id ? mockProjects[id] : null;
-    
-    const data = draft || published || mockData;
-    
-    if (data) {
-      setTitle(data.title);
-      setSummary(data.summary);
-      setDescription(data.description);
-      setRole(data.role);
-      setTechnologies([...data.technologies]);
-      setImages([...data.images]);
-      setLink(data.link || '');
-      setVisible(data.visible);
-      setStatus(data.status);
-    } else {
-      setTitle('Untitled Project');
-      setSummary('');
-      setDescription('');
-      setRole('');
-      setTechnologies([]);
-      setImages([]);
-      setLink('');
-      setVisible(false);
-      setStatus('draft');
+    const loadProject = async () => {
+      if (isNew) {
+        setIsLoading(false);
+        setTitle('New Project');
+        setSlug('new-project-' + Date.now());
+        return;
+      }
+
+      if (!id) return;
+
+      setIsLoading(true);
+      setError(null);
+
+      const result = await projectsApi.getById(id);
+      
+      if (result.success && result.data) {
+        const p = result.data;
+        setProject(p);
+        setTitle(p.title_draft);
+        setDescription(p.description_draft || '');
+        setSlug(p.slug);
+        setTechnologies(p.technologies || []);
+        setThumbnailUrl(p.thumbnail_url || '');
+        setGithubUrl(p.github_url || '');
+        setExternalUrl(p.external_url || '');
+        setIsVisible(p.is_visible);
+        setIsFeatured(p.is_featured);
+      } else {
+        setError(result.error || 'Failed to load project');
+      }
+      
+      setIsLoading(false);
+    };
+
+    loadProject();
+  }, [id, isNew]);
+
+  // Track changes
+  useEffect(() => {
+    if (isLoading || !project) {
+      if (isNew) setHasChanges(true);
+      return;
     }
-  }, [id, projectId, getDraft, getPublished]);
+    
+    const changed = 
+      title !== project.title_draft ||
+      description !== (project.description_draft || '') ||
+      JSON.stringify(technologies) !== JSON.stringify(project.technologies || []) ||
+      thumbnailUrl !== (project.thumbnail_url || '') ||
+      githubUrl !== (project.github_url || '') ||
+      externalUrl !== (project.external_url || '') ||
+      isVisible !== project.is_visible ||
+      isFeatured !== project.is_featured;
+    
+    setHasChanges(changed);
+  }, [title, description, technologies, thumbnailUrl, githubUrl, externalUrl, isVisible, isFeatured, project, isLoading, isNew]);
 
-  // Build current project data
-  const getCurrentData = useCallback((): ProjectData => ({
-    id: projectId,
-    title,
-    summary,
-    description,
-    role,
-    technologies,
-    images,
-    link,
-    visible,
-    status,
-  }), [projectId, title, summary, description, role, technologies, images, link, visible, status]);
-
-  // Auto-save to draft
-  const autoSave = useCallback(() => {
+  // Auto-save draft
+  const saveDraft = useCallback(async () => {
     if (!hasChanges) return;
-    saveDraft('project', projectId, getCurrentData());
-    setLastSaved(new Date());
-    setHasChanges(false);
-    toast({
-      description: 'Draft saved automatically',
-      duration: 2000,
-    });
-  }, [hasChanges, saveDraft, projectId, getCurrentData, toast]);
+    if (isNew && !project) {
+      // Create new project
+      setIsSaving(true);
+      const result = await projectsApi.create({
+        slug,
+        title_draft: title,
+        description_draft: description,
+        technologies,
+        thumbnail_url: thumbnailUrl || null,
+        github_url: githubUrl || null,
+        external_url: externalUrl || null,
+        is_visible: isVisible,
+        is_featured: isFeatured,
+      } as Partial<Project>);
 
+      if (result.success && result.data) {
+        setProject(result.data);
+        setHasChanges(false);
+        setLastSaved(new Date());
+        toast({ description: 'Project created', duration: 2000 });
+        navigate(`/admin/projects/${result.data.id}`, { replace: true });
+      } else {
+        toast({ 
+          title: 'Failed to create project', 
+          description: result.error, 
+          variant: 'destructive' 
+        });
+      }
+      setIsSaving(false);
+      return;
+    }
+
+    if (!project) return;
+
+    setIsSaving(true);
+    const result = await projectsApi.update(project.id, {
+      title_draft: title,
+      description_draft: description,
+      technologies,
+      thumbnail_url: thumbnailUrl || null,
+      github_url: githubUrl || null,
+      external_url: externalUrl || null,
+      is_visible: isVisible,
+      is_featured: isFeatured,
+    } as Partial<Project>);
+
+    if (result.success && result.data) {
+      setProject(result.data);
+      setHasChanges(false);
+      setLastSaved(new Date());
+      toast({ description: 'Draft saved', duration: 2000 });
+    } else {
+      toast({ 
+        title: 'Failed to save draft', 
+        description: result.error, 
+        variant: 'destructive' 
+      });
+    }
+    setIsSaving(false);
+  }, [hasChanges, isNew, project, slug, title, description, technologies, thumbnailUrl, githubUrl, externalUrl, isVisible, isFeatured, toast, navigate]);
+
+  // Auto-save on changes (debounced)
   useEffect(() => {
     if (!hasChanges) return;
-    const timer = setTimeout(autoSave, 2000);
-    return () => clearTimeout(timer);
-  }, [title, summary, description, role, technologies, images, link, visible, hasChanges, autoSave]);
+    
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+    }
+    
+    autoSaveTimer.current = setTimeout(() => {
+      saveDraft();
+    }, 2000);
 
-  useEffect(() => {
-    setHasChanges(true);
-  }, [title, summary, description, role, technologies, images, link, visible]);
+    return () => {
+      if (autoSaveTimer.current) {
+        clearTimeout(autoSaveTimer.current);
+      }
+    };
+  }, [title, description, technologies, thumbnailUrl, githubUrl, externalUrl, isVisible, isFeatured, hasChanges, saveDraft]);
 
-  const handleAddTechnology = () => {
-    setTechnologies([...technologies, '']);
+  // Publish
+  const handlePublish = async () => {
+    // Save draft first
+    await saveDraft();
+    
+    if (!project) return;
+
+    setIsPublishing(true);
+    const result = await publishApi.publishProject(project.id);
+    setShowPublishDialog(false);
+
+    if (result.success) {
+      // Reload project to get updated published data
+      const reloadResult = await projectsApi.getById(project.id);
+      if (reloadResult.success && reloadResult.data) {
+        setProject(reloadResult.data);
+      }
+      toast({ title: 'Project published', description: 'Changes are now live.' });
+    } else {
+      toast({ 
+        title: 'Failed to publish', 
+        description: result.error, 
+        variant: 'destructive' 
+      });
+    }
+    setIsPublishing(false);
   };
 
-  const handleUpdateTechnology = (index: number, value: string) => {
+  // Discard changes
+  const handleDiscard = async () => {
+    if (!project) return;
+
+    const result = await projectsApi.discardDraft(project.id);
+    setShowDiscardDialog(false);
+
+    if (result.success && result.data) {
+      const p = result.data;
+      setProject(p);
+      setTitle(p.title_draft);
+      setDescription(p.description_draft || '');
+      setTechnologies(p.technologies || []);
+      setThumbnailUrl(p.thumbnail_url || '');
+      setGithubUrl(p.github_url || '');
+      setExternalUrl(p.external_url || '');
+      setIsVisible(p.is_visible);
+      setIsFeatured(p.is_featured);
+      setHasChanges(false);
+      toast({ description: 'Changes discarded' });
+    } else {
+      toast({ 
+        title: 'Failed to discard', 
+        description: result.error, 
+        variant: 'destructive' 
+      });
+    }
+  };
+
+  // Technology management
+  const addTechnology = () => setTechnologies([...technologies, '']);
+  const updateTechnology = (index: number, value: string) => {
     const updated = [...technologies];
     updated[index] = value;
     setTechnologies(updated);
   };
-
-  const handleRemoveTechnology = (index: number) => {
+  const removeTechnology = (index: number) => {
     setTechnologies(technologies.filter((_, i) => i !== index));
   };
 
-  const handleAddImage = () => {
-    setImages([...images, '']);
-  };
-
-  const handleUpdateImage = (index: number, value: string) => {
-    const updated = [...images];
-    updated[index] = value;
-    setImages(updated);
-  };
-
-  const handleRemoveImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index));
-  };
-
-  const handlePublish = async () => {
-    // Save draft first
-    saveDraft('project', projectId, { ...getCurrentData(), status: 'published' });
-    
-    const result = await publishItem('project', projectId);
-    setShowPublishDialog(false);
-    
-    if (result.success) {
-      setStatus('published');
-      setHasChanges(false);
-      toast({
-        title: 'Project published',
-        description: 'Your changes are now live.',
-      });
-    } else {
-      toast({
-        title: 'Publish failed',
-        description: result.error || 'Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleDiscard = () => {
-    discardChanges('project', projectId);
-    setShowDiscardDialog(false);
-    
-    // Reload from published version
-    const published = getPublished<ProjectData>('project', projectId);
-    const mockData = id ? mockProjects[id] : null;
-    const data = published || mockData;
-    
-    if (data) {
-      setTitle(data.title);
-      setSummary(data.summary);
-      setDescription(data.description);
-      setRole(data.role);
-      setTechnologies([...data.technologies]);
-      setImages([...data.images]);
-      setLink(data.link || '');
-      setVisible(data.visible);
-      setStatus(data.status);
-    }
-    
-    setHasChanges(false);
-    toast({
-      description: 'Changes discarded',
-    });
-  };
-
+  // Preview
   const handlePreview = () => {
-    // Save draft before preview
-    saveDraft('project', projectId, getCurrentData());
-    window.open(`/preview/project/${projectId}`, '_blank');
+    if (project) {
+      window.open(`/preview/project/${project.id}`, '_blank');
+    }
   };
 
-  const handlePreviewSite = () => {
-    saveDraft('project', projectId, getCurrentData());
-    window.open('/preview', '_blank');
-  };
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <Skeleton className="h-64" />
+        <Skeleton className="h-48" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl text-center py-12">
+        <p className="text-destructive mb-4">{error}</p>
+        <Button onClick={() => navigate('/admin/projects')}>Back to Projects</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/admin/projects')}
-          >
+          <Button variant="ghost" size="icon" onClick={() => navigate('/admin/projects')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-lg font-semibold">
-              {isNew ? 'New Project' : 'Edit Project'}
-            </h1>
+            <h1 className="text-lg font-semibold">{isNew ? 'New Project' : 'Edit Project'}</h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <Badge
-                variant={status === 'published' ? 'default' : 'secondary'}
-                className="text-xs"
-              >
-                {status === 'published' ? 'Published' : 'Draft'}
+              <Badge variant={project?.is_published ? 'default' : 'secondary'} className="text-xs">
+                {project?.is_published ? 'Published' : 'Draft'}
               </Badge>
-              {hasChanges && (
-                <span className="text-xs text-warning">Unsaved changes</span>
-              )}
-              {lastSaved && !hasChanges && (
+              {hasChanges && <span className="text-xs text-amber-600">Unsaved changes</span>}
+              {isSaving && <span className="text-xs text-muted-foreground">Saving...</span>}
+              {lastSaved && !hasChanges && !isSaving && (
                 <span className="text-xs text-muted-foreground">
                   Saved {lastSaved.toLocaleTimeString()}
                 </span>
@@ -289,11 +322,13 @@ const ProjectEditor = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handlePreview}>
-            <Eye className="h-4 w-4 mr-1" />
-            Preview
-          </Button>
-          {hasUnpublishedChanges('project', projectId) && (
+          {!isNew && (
+            <Button variant="outline" size="sm" onClick={handlePreview}>
+              <Eye className="h-4 w-4 mr-1" />
+              Preview
+            </Button>
+          )}
+          {hasDraftChanges() && (
             <Button 
               variant="outline" 
               size="sm" 
@@ -304,7 +339,11 @@ const ProjectEditor = () => {
               Discard
             </Button>
           )}
-          <Button size="sm" onClick={() => setShowPublishDialog(true)} disabled={isPublishing}>
+          <Button 
+            size="sm" 
+            onClick={() => setShowPublishDialog(true)} 
+            disabled={isPublishing || isNew}
+          >
             <Upload className="h-4 w-4 mr-1" />
             Publish
           </Button>
@@ -328,52 +367,45 @@ const ProjectEditor = () => {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="summary">Short Summary</Label>
-            <Input
-              id="summary"
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="One-line description"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Full Description</Label>
+            <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detailed project description..."
-              rows={6}
+              placeholder="Describe your project..."
+              rows={5}
               className="resize-none"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Role / Responsibilities</Label>
-            <Textarea
-              id="role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="Describe your role and responsibilities..."
-              rows={3}
-              className="resize-none"
+            <Label htmlFor="thumbnail">Thumbnail URL</Label>
+            <Input
+              id="thumbnail"
+              value={thumbnailUrl}
+              onChange={(e) => setThumbnailUrl(e.target.value)}
+              placeholder="https://..."
             />
+            {thumbnailUrl && (
+              <div className="mt-2 aspect-video max-w-xs rounded-lg overflow-hidden bg-muted">
+                <img 
+                  src={thumbnailUrl} 
+                  alt="Thumbnail preview" 
+                  className="w-full h-full object-cover"
+                  onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }}
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Tech Stack */}
+      {/* Technologies */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">Tools & Tech Stack</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddTechnology}
-              className="h-7 text-xs"
-            >
+            <CardTitle className="text-base font-medium">Technologies</CardTitle>
+            <Button variant="outline" size="sm" onClick={addTechnology} className="h-7 text-xs">
               <Plus className="h-3 w-3 mr-1" />
               Add
             </Button>
@@ -385,146 +417,103 @@ const ProjectEditor = () => {
               <div key={index} className="flex items-center gap-2">
                 <Input
                   value={tech}
-                  onChange={(e) => handleUpdateTechnology(index, e.target.value)}
-                  placeholder="e.g., React, Node.js, PostgreSQL"
+                  onChange={(e) => updateTechnology(index, e.target.value)}
+                  placeholder="e.g., React, Node.js"
                   className="flex-1"
                 />
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                  onClick={() => handleRemoveTechnology(index)}
+                  onClick={() => removeTechnology(index)}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             ))}
             {technologies.length === 0 && (
-              <p className="text-sm text-muted-foreground py-2">
-                No technologies added yet
-              </p>
+              <p className="text-sm text-muted-foreground py-2">No technologies added yet</p>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Images */}
+      {/* Links */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">Project Images</CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddImage}
-              className="h-7 text-xs"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Add Image
-            </Button>
-          </div>
+          <CardTitle className="text-base font-medium">Links</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {images.map((url, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={url}
-                    onChange={(e) => handleUpdateImage(index, e.target.value)}
-                    placeholder="https://..."
-                    className="flex-1"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleRemoveImage(index)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                {url && (
-                  <div className="relative aspect-video w-full max-w-xs rounded-md overflow-hidden bg-muted">
-                    <img
-                      src={url}
-                      alt={`Project image ${index + 1}`}
-                      className="object-cover w-full h-full"
-                      onError={(e) => {
-                        e.currentTarget.src = '/placeholder.svg';
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
-            {images.length === 0 && (
-              <p className="text-sm text-muted-foreground py-2">
-                No images added yet. Add image URLs to display project screenshots.
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Links & Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-medium">Links & Settings</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="link">Project Link</Label>
+            <Label htmlFor="github">GitHub URL</Label>
             <div className="flex items-center gap-2">
+              <Github className="h-4 w-4 text-muted-foreground" />
               <Input
-                id="link"
-                type="url"
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
+                id="github"
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                placeholder="https://github.com/..."
+                className="flex-1"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="external">Live Demo URL</Label>
+            <div className="flex items-center gap-2">
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              <Input
+                id="external"
+                value={externalUrl}
+                onChange={(e) => setExternalUrl(e.target.value)}
                 placeholder="https://..."
                 className="flex-1"
               />
-              {link && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9"
-                  onClick={() => window.open(link, '_blank')}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              )}
             </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t border-border">
-            <div>
-              <Label>Visibility</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Show this project on your public portfolio
-              </p>
-            </div>
-            <Switch checked={visible} onCheckedChange={setVisible} />
           </div>
         </CardContent>
       </Card>
 
-      {/* Publish Confirmation Dialog */}
+      {/* Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-medium">Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Visible</Label>
+              <p className="text-xs text-muted-foreground">Show on public site</p>
+            </div>
+            <Switch checked={isVisible} onCheckedChange={setIsVisible} />
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div>
+              <Label>Featured</Label>
+              <p className="text-xs text-muted-foreground">Highlight on homepage</p>
+            </div>
+            <Switch checked={isFeatured} onCheckedChange={setIsFeatured} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
       <PublishConfirmDialog
         open={showPublishDialog}
         onOpenChange={setShowPublishDialog}
         onConfirm={handlePublish}
+        title="Publish Project"
+        description="This will make your project visible on the public site."
         isLoading={isPublishing}
-        title={`Publish "${title}"?`}
-        variant="publish"
       />
 
-      {/* Discard Confirmation Dialog */}
       <PublishConfirmDialog
         open={showDiscardDialog}
         onOpenChange={setShowDiscardDialog}
         onConfirm={handleDiscard}
-        title={`Discard changes to "${title}"?`}
+        title="Discard Changes"
+        description="This will revert to the last published version. Unsaved changes will be lost."
         variant="discard"
       />
     </div>
