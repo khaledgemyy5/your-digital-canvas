@@ -1,1 +1,19 @@
 project_id = "ixodttaayenelpdratzb"
+
+[functions.api-preview]
+verify_jwt = false
+
+[functions.api-auth]
+verify_jwt = false
+
+[functions.api-projects]
+verify_jwt = true
+
+[functions.api-sections]
+verify_jwt = true
+
+[functions.api-settings]
+verify_jwt = true
+
+[functions.api-publish]
+verify_jwt = true
