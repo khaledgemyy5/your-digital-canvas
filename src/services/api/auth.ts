@@ -116,6 +116,57 @@ export const authApi = {
   },
 
   /**
+   * Sign in with email and password
+   */
+  signInWithPassword: async (email: string, password: string): Promise<ApiResponse<void>> => {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return { success: false, data: null, error: error.message };
+      }
+
+      return { success: true, data: undefined, error: null };
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to sign in',
+      };
+    }
+  },
+
+  /**
+   * Sign up with email and password
+   */
+  signUp: async (email: string, password: string, redirectUrl: string): Promise<ApiResponse<void>> => {
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+        },
+      });
+
+      if (error) {
+        return { success: false, data: null, error: error.message };
+      }
+
+      return { success: true, data: undefined, error: null };
+    } catch (error) {
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to sign up',
+      };
+    }
+  },
+
+  /**
    * Check if email is authorized as admin
    */
   checkAdminEmail: async (email: string): Promise<ApiResponse<boolean>> => {

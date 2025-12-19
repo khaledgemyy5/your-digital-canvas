@@ -16,6 +16,8 @@ interface AuthContextType {
   isAdmin: boolean;
   isLoading: boolean;
   sendMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   sessionExpiresAt: Date | null;
 }
@@ -206,6 +208,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [checkAdminStatus]);
 
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    // Check rate limit
+    const rateLimitCheck = checkRateLimit();
+    if (!rateLimitCheck.allowed) {
+      const minutes = Math.ceil((rateLimitCheck.remainingTime || 0) / 60000);
+      return { 
+        success: false, 
+        error: `Too many login attempts. Please try again in ${minutes} minute${minutes !== 1 ? 's' : ''}.` 
+      };
+    }
+
+    try {
+      recordAttempt();
+
+      // Check if email is in allowed admin list
+      const isAllowed = await checkAdminStatus(email);
+      if (!isAllowed) {
+        return { 
+          success: false, 
+          error: 'This email is not authorized to access the admin panel.' 
+        };
+      }
+
+      const result = await authApi.signInWithPassword(email, password);
+
+      if (!result.success) {
+        return { success: false, error: result.error || 'Invalid email or password' };
+      }
+
+      resetRateLimit();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'An unexpected error occurred. Please try again.' };
+    }
+  }, [checkAdminStatus]);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    // Check rate limit
+    const rateLimitCheck = checkRateLimit();
+    if (!rateLimitCheck.allowed) {
+      const minutes = Math.ceil((rateLimitCheck.remainingTime || 0) / 60000);
+      return { 
+        success: false, 
+        error: `Too many attempts. Please try again in ${minutes} minute${minutes !== 1 ? 's' : ''}.` 
+      };
+    }
+
+    try {
+      recordAttempt();
+
+      // Check if email is in allowed admin list
+      const isAllowed = await checkAdminStatus(email);
+      if (!isAllowed) {
+        return { 
+          success: false, 
+          error: 'This email is not authorized to access the admin panel.' 
+        };
+      }
+
+      const redirectUrl = `${window.location.origin}/admin`;
+      const result = await authApi.signUp(email, password, redirectUrl);
+
+      if (!result.success) {
+        return { success: false, error: result.error || 'Failed to create account' };
+      }
+
+      resetRateLimit();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'An unexpected error occurred. Please try again.' };
+    }
+  }, [checkAdminStatus]);
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -226,6 +301,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         isLoading,
         sendMagicLink,
+        signInWithPassword,
+        signUp,
         logout,
         sessionExpiresAt,
       }}
