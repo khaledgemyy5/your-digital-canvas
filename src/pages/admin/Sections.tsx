@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,7 @@ const initialSections: Section[] = [
 ];
 
 const Sections = () => {
+  const navigate = useNavigate();
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
@@ -118,7 +120,12 @@ const Sections = () => {
                       onCheckedChange={() => toggleVisibility(section.id)}
                     />
                   </div>
-                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2"
+                    onClick={() => navigate(`/admin/sections/${section.id}`)}
+                  >
                     <Edit className="h-4 w-4" />
                   </Button>
                 </div>
