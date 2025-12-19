@@ -64,9 +64,16 @@ export interface PreviewSection extends Section {
   bullets: Array<SectionBullet & { content: string | null }>;
 }
 
+export interface PreviewProjectPage {
+  id: string;
+  content: Record<string, unknown> | null;
+  is_published: boolean;
+}
+
 export interface PreviewProject extends Project {
   title: string;
   description: string | null;
+  pages?: PreviewProjectPage[];
 }
 
 export interface PreviewSocialLink {
@@ -120,10 +127,17 @@ export const previewApi = {
   },
 
   /**
-   * Get single project preview
+   * Get single project preview by ID
    */
   getProject: async (id: string, mode: 'draft' | 'published' = 'draft'): Promise<ApiResponse<PreviewProject>> => {
     return fetchWithAuth<PreviewProject>(`/api-preview/project/${id}?mode=${mode}`);
+  },
+
+  /**
+   * Get single project preview by slug
+   */
+  getProjectBySlug: async (slug: string, mode: 'draft' | 'published' = 'draft'): Promise<ApiResponse<PreviewProject>> => {
+    return fetchWithAuth<PreviewProject>(`/api-preview/project/slug/${slug}?mode=${mode}`);
   },
 
   // Compatibility with old API

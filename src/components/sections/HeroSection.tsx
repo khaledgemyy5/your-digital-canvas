@@ -1,35 +1,47 @@
 import { ArrowDown, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SectionWrapper } from './SectionWrapper';
+import { PreviewResume } from '@/services/api/preview';
 
-export function HeroSection() {
+interface HeroSectionProps {
+  title: string;
+  subtitle?: string | null;
+  content?: Record<string, unknown> | null;
+  resume?: PreviewResume;
+}
+
+export function HeroSection({ title, subtitle, content, resume }: HeroSectionProps) {
   const scrollToAbout = () => {
     document.querySelector('#summary')?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // Extract content fields with fallbacks
+  const greeting = (content?.greeting as string) || '';
+  const description = (content?.description as string) || '';
+  const ctaText = (content?.cta_text as string) || 'View My Work';
 
   return (
     <SectionWrapper id="hero" variant="hero" className="flex items-center">
       <div className="w-full">
         <div className="max-w-4xl stagger-children">
           {/* Greeting */}
-          <p className="text-sm md:text-base font-medium text-primary mb-4 md:mb-6 tracking-wide uppercase">
-            Welcome to my portfolio
-          </p>
+          {greeting && (
+            <p className="text-sm md:text-base font-medium text-primary mb-4 md:mb-6 tracking-wide uppercase">
+              {greeting}
+            </p>
+          )}
 
           {/* Main Heading */}
           <h1 className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-serif text-foreground leading-tight mb-6 md:mb-8">
-            I build{' '}
-            <span className="text-gradient italic">
-              exceptional
-            </span>{' '}
-            digital experiences
+            {title}
           </h1>
 
           {/* Description */}
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-8 md:mb-12 leading-relaxed">
-            A passionate software engineer specializing in creating elegant solutions 
-            that bridge the gap between complex technical challenges and beautiful user experiences.
-          </p>
+          {(subtitle || description) && (
+            <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mb-8 md:mb-12 leading-relaxed">
+              {description || subtitle}
+            </p>
+          )}
 
           {/* CTAs */}
           <div className="flex flex-wrap gap-4">
@@ -38,17 +50,22 @@ export function HeroSection() {
               size="lg"
               onClick={scrollToAbout}
             >
-              View My Work
+              {ctaText}
               <ArrowDown className="h-4 w-4" />
             </Button>
 
-            <Button
-              variant="glass"
-              size="lg"
-            >
-              <Download className="h-4 w-4" />
-              Download Resume
-            </Button>
+            {resume?.file_url && (
+              <Button
+                variant="glass"
+                size="lg"
+                asChild
+              >
+                <a href={resume.file_url} target="_blank" rel="noopener noreferrer">
+                  <Download className="h-4 w-4" />
+                  Download Resume
+                </a>
+              </Button>
+            )}
           </div>
         </div>
 

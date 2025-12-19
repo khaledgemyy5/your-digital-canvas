@@ -1,6 +1,12 @@
 import { SectionWrapper, SectionHeader } from './SectionWrapper';
 import { cn } from '@/lib/utils';
 
+interface Bullet {
+  id: string;
+  content: string;
+  display_order: number;
+}
+
 interface ExperienceItem {
   role: string;
   company: string;
@@ -9,48 +15,26 @@ interface ExperienceItem {
   highlights: string[];
 }
 
-const experiences: ExperienceItem[] = [
-  {
-    role: 'Senior Software Engineer',
-    company: 'Tech Company',
-    period: '2022 - Present',
-    description: 'Leading development of customer-facing applications and internal tooling.',
-    highlights: [
-      'Architected and implemented a microservices platform serving 1M+ users',
-      'Reduced page load times by 60% through optimization strategies',
-      'Mentored junior developers and established coding standards',
-    ],
-  },
-  {
-    role: 'Full Stack Developer',
-    company: 'Startup Inc',
-    period: '2020 - 2022',
-    description: 'Built and scaled core product features from MVP to production.',
-    highlights: [
-      'Developed RESTful APIs handling 10K+ requests per minute',
-      'Implemented real-time collaboration features using WebSockets',
-      'Designed and built the company\'s design system',
-    ],
-  },
-  {
-    role: 'Software Engineer',
-    company: 'Agency Co',
-    period: '2018 - 2020',
-    description: 'Delivered custom web solutions for enterprise clients.',
-    highlights: [
-      'Built responsive web applications for Fortune 500 clients',
-      'Integrated third-party APIs and payment systems',
-      'Improved deployment processes, reducing release time by 40%',
-    ],
-  },
-];
+interface ExperienceSectionProps {
+  title: string;
+  subtitle?: string | null;
+  content?: Record<string, unknown> | null;
+  bullets?: Bullet[];
+}
 
-export function ExperienceSection() {
+export function ExperienceSection({ title, subtitle, content, bullets = [] }: ExperienceSectionProps) {
+  // Extract experiences from content
+  const experiences = (content?.experiences as ExperienceItem[]) || [];
+
+  if (experiences.length === 0) {
+    return null;
+  }
+
   return (
     <SectionWrapper id="experience">
       <SectionHeader 
-        title="Experience" 
-        subtitle="My professional journey and key accomplishments."
+        title={title} 
+        subtitle={subtitle || undefined}
       />
 
       <div className="relative">

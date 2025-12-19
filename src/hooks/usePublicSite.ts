@@ -30,12 +30,24 @@ export const usePublicSite = () => {
     fetchSiteData();
   }, [fetchSiteData]);
 
-  // Helper to get visible sections in order
+  // Helper to get visible sections in order with bullets mapped
   const getVisibleSections = useCallback(() => {
     if (!data?.sections) return [];
     return data.sections
       .filter(s => s.is_visible && s.is_published)
-      .sort((a, b) => a.display_order - b.display_order);
+      .sort((a, b) => a.display_order - b.display_order)
+      .map(section => ({
+        ...section,
+        // Map bullets to have proper content field from published data
+        bullets: (section.bullets || [])
+          .filter(b => b.is_published)
+          .sort((a, b) => a.display_order - b.display_order)
+          .map(b => ({
+            id: b.id,
+            content: b.content || '',
+            display_order: b.display_order,
+          })),
+      }));
   }, [data]);
 
   // Helper to get visible projects in order
