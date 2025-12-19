@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Lock, CheckCircle, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { authApi } from '@/services/api/auth';
-import { supabase } from '@/integrations/supabase/client';
 
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 
@@ -23,10 +22,10 @@ const ResetPassword: React.FC = () => {
 
   useEffect(() => {
     const verifySession = async () => {
-      // Check if there's already a valid session
-      const { data: { session } } = await supabase.auth.getSession();
+      // Check if there's a valid session via API service
+      const result = await authApi.getSession();
       
-      if (session) {
+      if (result.success && result.data?.session) {
         setIsVerifying(false);
         return;
       }
