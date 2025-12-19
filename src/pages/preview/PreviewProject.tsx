@@ -1,27 +1,117 @@
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { PublicLayout } from '@/components/layout/PublicLayout';
-import { getDraftProject } from '@/contexts/PreviewContext';
+import { previewApi, type PreviewProject as PreviewProjectType } from '@/services/api/preview';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Moon, Sun, X, ExternalLink, ArrowLeft } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Moon, Sun, X, ExternalLink, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 
 const PreviewProject = () => {
   const { id } = useParams<{ id: string }>();
   const { theme, setTheme } = useTheme();
-  const project = id ? getDraftProject(id) : undefined;
+  
+  const [project, setProject] = useState<PreviewProjectType | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchProject = async () => {
+    if (!id) {
+      setError('No project ID provided');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    
+    const result = await previewApi.getProject(id, 'draft');
+    
+    if (result.success && result.data) {
+      setProject(result.data);
+    } else {
+      setError(result.error || 'Failed to load project');
+    }
+    
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchProject();
+  }, [id]);
 
   const handleClose = () => {
     window.close();
   };
 
-  if (!project) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">Project not found</p>
+      <div className="min-h-screen bg-background">
+        <div className="fixed top-0 left-0 right-0 z-50 bg-warning/90 text-warning-foreground px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="bg-background/20 border-background/40">
+                Draft Preview
+              </Badge>
+              <span className="text-sm font-medium">Loading...</span>
+            </div>
+          </div>
+        </div>
+        <div className="pt-10">
+          <PublicLayout>
+            <div className="py-16 px-4 max-w-4xl mx-auto space-y-6">
+              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-12 w-2/3" />
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="aspect-video w-full" />
+              <Skeleton className="h-32 w-full" />
+            </div>
+          </PublicLayout>
+        </div>
       </div>
     );
   }
+
+  if (error || !project) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="fixed top-0 left-0 right-0 z-50 bg-destructive/90 text-destructive-foreground px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="bg-background/20 border-background/40">
+                Preview Error
+              </Badge>
+              <span className="text-sm font-medium">
+                {error || 'Project not found'}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-background/20"
+              onClick={handleClose}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="pt-10">
+          <PublicLayout>
+            <div className="py-24 text-center">
+              <p className="text-destructive mb-4">{error || 'Project not found'}</p>
+              <Button variant="outline" onClick={fetchProject}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          </PublicLayout>
+        </div>
+      </div>
+    );
+  }
+
+  const technologies = Array.isArray(project.technologies) ? project.technologies : [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -41,7 +131,17 @@ const PreviewProject = () => {
               variant="ghost"
               size="icon"
               className="h-8 w-8 hover:bg-background/20"
+              onClick={fetchProject}
+              title="Refresh"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 hover:bg-background/20"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title="Toggle theme"
             >
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -50,6 +150,7 @@ const PreviewProject = () => {
               size="icon"
               className="h-8 w-8 hover:bg-background/20"
               onClick={handleClose}
+              title="Close"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -76,16 +177,18 @@ const PreviewProject = () => {
                 <h1 className="text-3xl md:text-4xl font-bold mb-3">
                   {project.title}
                 </h1>
-                <p className="text-lg text-muted-foreground">
-                  {project.summary}
-                </p>
+                {project.description && (
+                  <p className="text-lg text-muted-foreground">
+                    {project.description}
+                  </p>
+                )}
               </header>
 
               {/* Hero Image */}
-              {project.images[0] && (
+              {project.thumbnail_url && (
                 <div className="aspect-video rounded-lg overflow-hidden mb-10 bg-muted">
                   <img
-                    src={project.images[0]}
+                    src={project.thumbnail_url}
                     alt={project.title}
                     className="w-full h-full object-cover"
                   />
@@ -93,13 +196,13 @@ const PreviewProject = () => {
               )}
 
               {/* Tech Stack */}
-              {project.technologies.length > 0 && (
+              {technologies.length > 0 && (
                 <div className="mb-10">
                   <h2 className="text-sm font-medium text-muted-foreground mb-3">
                     Technologies
                   </h2>
                   <div className="flex flex-wrap gap-2">
-                    {project.technologies.map((tech) => (
+                    {technologies.map((tech) => (
                       <Badge key={tech} variant="secondary">
                         {tech}
                       </Badge>
@@ -108,56 +211,25 @@ const PreviewProject = () => {
                 </div>
               )}
 
-              {/* Description */}
-              <div className="prose prose-neutral dark:prose-invert max-w-none mb-10">
-                <h2 className="text-xl font-semibold mb-4">Overview</h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  {project.description}
-                </p>
-              </div>
-
-              {/* Role */}
-              {project.role && (
-                <div className="mb-10">
-                  <h2 className="text-xl font-semibold mb-4">My Role</h2>
-                  <p className="text-muted-foreground leading-relaxed">
-                    {project.role}
-                  </p>
-                </div>
-              )}
-
-              {/* Additional Images */}
-              {project.images.length > 1 && (
-                <div className="mb-10">
-                  <h2 className="text-xl font-semibold mb-4">Gallery</h2>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {project.images.slice(1).map((img, idx) => (
-                      <div
-                        key={idx}
-                        className="aspect-video rounded-lg overflow-hidden bg-muted"
-                      >
-                        <img
-                          src={img}
-                          alt={`${project.title} screenshot ${idx + 2}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Link */}
-              {project.link && (
-                <div className="pt-6 border-t border-border">
+              {/* Links */}
+              <div className="flex gap-4 pt-6 border-t border-border">
+                {project.external_url && (
                   <Button asChild>
-                    <a href={project.link} target="_blank" rel="noopener noreferrer">
+                    <a href={project.external_url} target="_blank" rel="noopener noreferrer">
                       View Project
                       <ExternalLink className="ml-2 h-4 w-4" />
                     </a>
                   </Button>
-                </div>
-              )}
+                )}
+                {project.github_url && (
+                  <Button variant="outline" asChild>
+                    <a href={project.github_url} target="_blank" rel="noopener noreferrer">
+                      View Source
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
+              </div>
             </div>
           </article>
         </PublicLayout>
