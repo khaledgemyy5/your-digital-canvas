@@ -1,38 +1,26 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { GripVertical, Edit } from 'lucide-react';
-
-interface Section {
-  id: string;
-  name: string;
-  status: 'draft' | 'published';
-  visible: boolean;
-  order: number;
-}
-
-// Predefined sections matching user requirements
-const initialSections: Section[] = [
-  { id: '1', name: 'Summary', status: 'published', visible: true, order: 1 },
-  { id: '2', name: 'Skills', status: 'draft', visible: true, order: 2 },
-  { id: '3', name: 'Experience Overview', status: 'published', visible: true, order: 3 },
-  { id: '4', name: 'How I Work', status: 'published', visible: true, order: 4 },
-  { id: '5', name: 'Some Projects', status: 'draft', visible: true, order: 5 },
-  { id: '6', name: 'Contact', status: 'published', visible: true, order: 6 },
-];
+import { Skeleton } from '@/components/ui/skeleton';
+import { GripVertical, Edit, AlertCircle } from 'lucide-react';
+import { useSections } from '@/hooks/useSections';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 const Sections = () => {
   const navigate = useNavigate();
-  const [sections, setSections] = useState<Section[]>(initialSections);
+  const { sections, isLoading, error, toggleVisibility, reorderSections } = useSections();
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
-  const toggleVisibility = (id: string) => {
-    setSections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, visible: !s.visible } : s))
-    );
+  const handleToggleVisibility = async (id: string) => {
+    const result = await toggleVisibility(id);
+    if (result.success) {
+      toast.success('Visibility updated');
+    } else {
+      toast.error(result.error || 'Failed to update visibility');
+    }
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -45,7 +33,7 @@ const Sections = () => {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
+  const handleDrop = async (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     if (!draggedId || draggedId === targetId) return;
 
@@ -56,15 +44,54 @@ const Sections = () => {
     const [removed] = newSections.splice(draggedIndex, 1);
     newSections.splice(targetIndex, 0, removed);
 
-    // Update order values
-    const reordered = newSections.map((s, idx) => ({ ...s, order: idx + 1 }));
-    setSections(reordered);
+    // Create new order
+    const newOrder = newSections.map((s, idx) => ({ id: s.id, display_order: idx }));
+    
+    const result = await reorderSections(newOrder);
+    if (result.success) {
+      toast.success('Order updated');
+    } else {
+      toast.error('Failed to update order');
+    }
+    
     setDraggedId(null);
   };
 
   const handleDragEnd = () => {
     setDraggedId(null);
   };
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="h-10 w-10 mx-auto mb-3 text-destructive" />
+            <p className="text-sm font-medium">Failed to load sections</p>
+            <p className="text-xs text-muted-foreground mt-1">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -89,7 +116,7 @@ const Sections = () => {
                   draggedId === section.id
                     ? 'bg-muted/70 opacity-50'
                     : 'hover:bg-muted/30'
-                } ${!section.visible ? 'opacity-60' : ''}`}
+                } ${!section.is_visible ? 'opacity-60' : ''}`}
               >
                 <button
                   className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
@@ -100,24 +127,27 @@ const Sections = () => {
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <span className="font-medium text-sm">{section.name}</span>
+                  <span className="font-medium text-sm">{section.title}</span>
+                  {section.subtitle && (
+                    <p className="text-xs text-muted-foreground truncate">{section.subtitle}</p>
+                  )}
                 </div>
 
                 <Badge
-                  variant={section.status === 'published' ? 'default' : 'secondary'}
+                  variant={section.is_published ? 'default' : 'secondary'}
                   className="text-xs"
                 >
-                  {section.status === 'published' ? 'Published' : 'Draft'}
+                  {section.is_published ? 'Published' : 'Draft'}
                 </Badge>
 
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
-                      {section.visible ? 'Visible' : 'Hidden'}
+                      {section.is_visible ? 'Visible' : 'Hidden'}
                     </span>
                     <Switch
-                      checked={section.visible}
-                      onCheckedChange={() => toggleVisibility(section.id)}
+                      checked={section.is_visible}
+                      onCheckedChange={() => handleToggleVisibility(section.id)}
                     />
                   </div>
                   <Button
