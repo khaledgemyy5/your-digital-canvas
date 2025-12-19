@@ -1,108 +1,112 @@
 import React from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, FolderOpen, Clock, CheckCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FileText, FolderOpen, Clock, AlertCircle } from 'lucide-react';
 
 // Mock data - will be replaced with API calls
 const stats = {
-  draftSections: 2,
-  publishedSections: 4,
-  draftProjects: 1,
-  publishedProjects: 3,
-  lastEdited: [
-    { type: 'Section', name: 'Summary', editedAt: '2 hours ago' },
-    { type: 'Project', name: 'Portfolio Site', editedAt: '1 day ago' },
-    { type: 'Section', name: 'Skills', editedAt: '3 days ago' },
-  ],
+  totalSections: 6,
+  totalProjects: 4,
+  drafts: 3,
+  lastEdited: '2 hours ago',
 };
 
-const StatCard: React.FC<{
-  title: string;
-  value: number;
-  description: string;
-  icon: React.ReactNode;
-  variant?: 'default' | 'warning';
-}> = ({ title, value, description, icon, variant = 'default' }) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between pb-2">
-      <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-      <div className={variant === 'warning' ? 'text-warning' : 'text-primary'}>{icon}</div>
-    </CardHeader>
-    <CardContent>
-      <div className="text-3xl font-bold">{value}</div>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </CardContent>
-  </Card>
-);
+const recentActivity = [
+  { name: 'Summary', type: 'Section', status: 'draft', time: '2 hours ago' },
+  { name: 'Portfolio Site', type: 'Project', status: 'published', time: '1 day ago' },
+  { name: 'Skills', type: 'Section', status: 'draft', time: '3 days ago' },
+];
 
 const Dashboard: React.FC = () => {
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Overview of your portfolio content and recent activity.
-        </p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      {/* Stats */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{stats.totalSections}</p>
+                <p className="text-xs text-muted-foreground">Sections</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Draft Sections"
-          value={stats.draftSections}
-          description="Unpublished changes"
-          icon={<FileText className="h-5 w-5" />}
-          variant="warning"
-        />
-        <StatCard
-          title="Published Sections"
-          value={stats.publishedSections}
-          description="Live on site"
-          icon={<CheckCircle className="h-5 w-5" />}
-        />
-        <StatCard
-          title="Draft Projects"
-          value={stats.draftProjects}
-          description="Unpublished changes"
-          icon={<FolderOpen className="h-5 w-5" />}
-          variant="warning"
-        />
-        <StatCard
-          title="Published Projects"
-          value={stats.publishedProjects}
-          description="Live on site"
-          icon={<CheckCircle className="h-5 w-5" />}
-        />
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                <FolderOpen className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{stats.totalProjects}</p>
+                <p className="text-xs text-muted-foreground">Projects</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-warning/10">
+                <AlertCircle className="h-4 w-4 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{stats.drafts}</p>
+                <p className="text-xs text-muted-foreground">Unpublished</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">{stats.lastEdited}</p>
+                <p className="text-xs text-muted-foreground">Last edit</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Recent Activity */}
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>Your latest edits and changes</CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium">Recent Activity</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {stats.lastEdited.map((item, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between border-b border-border pb-4 last:border-0 last:pb-0"
-              >
+        <CardContent className="p-0">
+          <div className="divide-y divide-border">
+            {recentActivity.map((item, index) => (
+              <div key={index} className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
                     {item.type === 'Section' ? (
-                      <FileText className="h-5 w-5 text-muted-foreground" />
+                      <FileText className="h-4 w-4 text-muted-foreground" />
                     ) : (
-                      <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                      <FolderOpen className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
                   <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-muted-foreground">{item.type}</p>
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.type}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  {item.editedAt}
+                <div className="flex items-center gap-3">
+                  {item.status === 'draft' && (
+                    <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                      Draft
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">{item.time}</span>
                 </div>
               </div>
             ))}

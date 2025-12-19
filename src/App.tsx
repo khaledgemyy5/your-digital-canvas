@@ -17,6 +17,7 @@ import Dashboard from "@/pages/admin/Dashboard";
 import Sections from "@/pages/admin/Sections";
 import Projects from "@/pages/admin/Projects";
 import Settings from "@/pages/admin/Settings";
+import Appearance from "@/pages/admin/Appearance";
 
 // Layouts
 import AdminLayout from "@/components/layout/AdminLayout";
@@ -48,6 +49,7 @@ const App = () => (
                 <Route index element={<Dashboard />} />
                 <Route path="sections" element={<Sections />} />
                 <Route path="projects" element={<Projects />} />
+                <Route path="appearance" element={<Appearance />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
 
